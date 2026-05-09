@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+@theme {
+  /* App-wide typeface: Poppins for both sans and mono utilities */
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-mono: "Poppins", ui-sans-serif, system-ui, sans-serif;
+}
+
 @layer base {
   :root {
     --background: #FAFBFC;
@@ -12,10 +19,27 @@
     --secondary-foreground: #ffffff;
   }
 
+  html {
+    font-family: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: 'Poppins', -apple-system, sans-serif;
+    font-family: inherit;
+  }
+
+  #root {
+    font-family: inherit;
+  }
+
+  /* Form controls often use the UA font unless forced to inherit */
+  button,
+  input,
+  textarea,
+  select,
+  optgroup {
+    font-family: inherit;
   }
 
   ::selection {
