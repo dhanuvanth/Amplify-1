@@ -40,6 +40,7 @@ create table if not exists assets (
   clouds jsonb not null default '[]',
   tags jsonb not null default '[]',
   demo_url text,
+  video_url text,
   repo_url text,
   users_count int not null default 0,
   deployments_count int not null default 0,
@@ -75,9 +76,17 @@ create table if not exists submissions (
   owner_email text,
   repo_url text,
   demo_url text,
+  video_url text,
   clouds jsonb not null default '["AWS"]',
   maturity text not null default 'Demo-ready',
+  dependencies text not null default 'Not applicable',
+  prerequisites text not null default 'Not applicable',
+  commands text not null default 'Not applicable',
+  architecture text not null default 'Not applicable',
+  architectures text not null default 'Not applicable',
   attachments jsonb not null default '[]',
+  gov_reviewer text,
+  gov_notes text,
   approved_at date,
   published_at date,
   submitted_at date not null default current_date
@@ -88,11 +97,34 @@ alter table submissions add column if not exists solution text not null default 
 alter table submissions add column if not exists owner_email text;
 alter table submissions add column if not exists repo_url text;
 alter table submissions add column if not exists demo_url text;
+alter table submissions add column if not exists video_url text;
 alter table submissions add column if not exists clouds jsonb not null default '["AWS"]';
 alter table submissions add column if not exists maturity text not null default 'Demo-ready';
+alter table submissions add column if not exists dependencies text not null default 'Not applicable';
+alter table submissions add column if not exists prerequisites text not null default 'Not applicable';
+alter table submissions add column if not exists commands text not null default 'Not applicable';
+alter table submissions add column if not exists architecture text not null default 'Not applicable';
+alter table submissions add column if not exists architectures text not null default 'Not applicable';
 alter table submissions add column if not exists attachments jsonb not null default '[]';
+alter table submissions add column if not exists gov_reviewer text;
+alter table submissions add column if not exists gov_notes text;
 alter table submissions add column if not exists approved_at date;
 alter table submissions add column if not exists published_at date;
+
+alter table assets add column if not exists video_url text;
+
+-- Legacy cleanup: older UI builds stored the video link in demo_url and
+-- the launch/demo link in attachments[0].url. Keep video_url explicit and
+-- move the attachment URL into demo_url when present.
+update submissions
+set video_url = demo_url
+where video_url is null
+  and demo_url is not null;
+
+update submissions
+set demo_url = attachments -> 0 ->> 'url'
+where jsonb_typeof(attachments) = 'array'
+  and attachments -> 0 ->> 'url' is not null;
 
 create table if not exists activity_log (
   id uuid primary key default gen_random_uuid(),

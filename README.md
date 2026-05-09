@@ -1,64 +1,175 @@
-# AIMPLIFY (V1)
+# Amplify - Asset Catalog and Submission Pipeline
 
-AIMPLIFY is an internal Accelerator OS for browsing reusable AI assets, submitting new accelerators, and moving submissions through a governed review pipeline until they are published in the catalog.
+## Content
 
-## What this app does
+- [Context](#context)
+- [What This Solution Does](#what-this-solution-does)
+- [Amplify Problem Solution](#amplify-problem-solution)
+- [Use Case](#use-case)
+- [Pros and Cons](#pros-and-cons)
+- [Prerequisites and Dependencies](#prerequisites-and-dependencies)
+- [How to Start](#how-to-start)
+- [Quick Start](#quick-start)
+- [Architecture Overview](#architecture-overview)
+- [Environment Variables](#environment-variables)
+- [Troubleshooting](#troubleshooting)
 
-- **Dashboard:** Gives a quick command-center view of total assets, maturity, deploy counts, and pending review queue.
-- **Catalog:** Lets teams discover accelerators by family, cloud, maturity, category, and search.
-- **Asset details:** Shows architecture, quick start, prerequisites, dependencies, and links (demo/repo) for each asset.
-- **Submit:** Allows contributors to submit a new accelerator with metadata.
-- **Pipeline:** Lets reviewers move submissions through status gates and publish approved ones.
+## Context
 
-## End-to-end process flow
+Amplify is a frontend application to manage reusable AI and engineering assets across platform families.  
+It combines:
 
-1. **Sign in** with a demo user.
-2. **Browse catalog** to discover existing assets and avoid duplicate work.
-3. **Submit a new asset** from the Submit page.
-4. Submission enters pipeline with status progression:
-   - `Submitted` -> `AI Review` -> `Needs Changes` (if required) -> `Manual Approval` -> `Approved` -> `Published`
-5. Once published, the submission is added to the catalog as a new asset.
+- A catalog experience for discovery and reuse
+- A submission workflow for new assets
+- A review pipeline with governance statuses
+- Supabase-backed persistence for submissions and metadata
 
-## Demo credentials (V1)
+The goal is to help teams submit, review, approve, and publish reusable assets in an organized, auditable flow.
 
-### Main user (default login)
+## What This Solution Does
 
-- **Username (email):** `abhilash.vantaram@infovision.com`
-- **Password:** `Aimplify@2026`
+Amplify provides:
 
-### Other seeded demo users
+- **Catalog browsing** by family, maturity, and metadata
+- **Asset detail views** with architecture, prerequisites, quick-start, and action links
+- **Submission forms** to capture rich metadata (owner, cloud compatibility, links, dependencies, commands)
+- **Pipeline tracking** across stages such as Submitted, AI Review, Manual Approval, Approved, and Published
+- **Supabase integration** for storing and retrieving submissions
 
-- `balram.aggarwal@infovision.com` / `Aimplify@2026`
-- `dhanuvanth.senthilkumar@infovision.com` / `Aimplify@2026`
-- `pratyoosh.patel@infovision.com` / `Aimplify@2026`
-- `renju.devi@infovision.com` / `Aimplify@2026`
-- `swetha.polumahanthi@infovision.com` / `Aimplify@2026`
+## Amplify Problem Solution
 
-> Note: These are demo-only seeded credentials in frontend data for V1. Production auth (SSO/role policies) is not yet wired.
+Many teams struggle with asset sprawl: reusable solutions exist, but are scattered across repos, docs, and people.  
+Amplify addresses this by:
 
-## Data behavior (important)
+- Standardizing intake with a structured submission form
+- Creating a review lifecycle before publication
+- Preserving operational context (dependencies, prerequisites, commands, architecture)
+- Improving discoverability via a catalog-first UX
+- Making governance and readiness visible through status and maturity metadata
 
-- The app is pre-seeded with demo data so it works out of the box.
-- If Supabase is configured, it loads/saves assets and submissions from database tables.
-- If Supabase is not configured or unavailable, it gracefully falls back to seeded data.
-- Local browser storage is used to remember current user and client-side state snapshots.
+## Use Case
 
-## Quick start
+Use Amplify when you need to:
+
+- Publish internal reusable accelerators for delivery teams
+- Track a new asset from submission to approval and publication
+- Quickly evaluate whether an asset is demo-ready and production-usable
+- Centralize technical onboarding data for each accelerator
+
+Typical users:
+
+- Platform and enablement teams
+- Architects and technical leads
+- Delivery engineers looking for reusable assets
+- Governance/review stakeholders
+
+## Pros and Cons
+
+### Pros
+
+- Clear submission-to-publication workflow
+- Structured metadata improves searchability and handoff quality
+- Supports both local fallback and Supabase persistence
+- Simple React + TypeScript stack with fast local iteration
+
+### Cons
+
+- Current UX depends on quality/completeness of submitted metadata
+- Requires environment setup for full Supabase-backed behavior
+- Large bundles may trigger size warnings in production builds
+
+## Prerequisites and Dependencies
+
+### Prerequisites
+
+- Node.js 20+ recommended
+- npm 10+ recommended
+- Supabase project (optional for local-only mode, required for shared persistence)
+
+### Core dependencies
+
+- `react`
+- `react-dom`
+- `react-router-dom`
+- `@supabase/supabase-js`
+- `framer-motion`
+- `lucide-react`
+- `tailwind-merge`
+- `clsx`
+
+### Dev dependencies
+
+- `vite`
+- `typescript`
+- `eslint`
+- `@vitejs/plugin-react`
+
+## How to Start
+
+1. Install dependencies:
 
 ```bash
 npm install
+```
+
+2. Configure environment variables (see [Environment Variables](#environment-variables)).
+
+3. Run development server:
+
+```bash
 npm run dev
 ```
 
-Open the local Vite URL shown in terminal (usually `http://localhost:5173`), then sign in with the demo credentials above.
+4. Open the local URL shown by Vite (typically `http://localhost:5173`).
 
-## Optional: Supabase setup
+## Quick Start
 
-Create a `.env.local` file with:
+```bash
+# 1) Install
+npm install
+
+# 2) Start dev server
+npm run dev
+
+# 3) Validate build
+npm run build
+```
+
+## Architecture Overview
+
+- **Frontend**: React + TypeScript + Vite
+- **State/Data flow**:
+  - UI pages load and submit data via `src/lib/*`
+  - `src/lib/pipeline.ts` handles submission lifecycle and Supabase CRUD for pipeline records
+  - `src/lib/catalog.ts` builds catalog-ready assets from published submissions
+- **Persistence**:
+  - Supabase table `submissions` for pipeline data
+  - Local storage fallback when Supabase is unavailable
+
+## Environment Variables
+
+Create a `.env` file in the project root with:
 
 ```bash
 VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_or_publishable_key
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_or_anon_key
 ```
 
-Use `supabase-schema.sql` to create required tables before testing database-backed behavior.
+Notes:
+
+- The app also supports `VITE_SUPABASE_ANON_KEY` as fallback key name.
+- If env vars are missing, the app can still run using local-storage fallback paths for some flows.
+
+## Troubleshooting
+
+- **Only local data appears**  
+  Check that `VITE_SUPABASE_URL` and key are set correctly and server restarted after `.env` changes.
+
+- **Form updates appear partial**  
+  Verify schema alignment in `supabase-schema.sql` and payload fields in `src/lib/pipeline.ts`.
+
+- **Buttons should not open missing links**  
+  Asset action buttons are disabled automatically when demo/repo/video URLs are not available.
+
+- **Build warnings about chunk size**  
+  Consider route-level code splitting or adjusting Vite chunk size warning threshold.

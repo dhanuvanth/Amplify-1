@@ -1,0 +1,182 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { ArrowRight, Activity } from 'lucide-react';
+import { ASSETS, FAMILIES, ACTIVITY, SUBS0 } from '../data/mock';
+
+export function Home() {
+  const navigate = useNavigate();
+  const [userName, setUserName] = useState('');
+  
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+        setUserName(u.name.split(' ')[0] || u.name);
+      } catch (e) {}
+    }
+  }, []);
+  
+  const recentAssets = [...ASSETS].sort((a, b) => b.stats.deployments - a.stats.deployments).slice(0, 5);
+  const pendingSubs = SUBS0.filter(s => s.status !== 'approved');
+  
+  const totalDeploys = ASSETS.reduce((s, a) => s + a.stats.deployments, 0);
+  const demoCount = ASSETS.filter(a => a.demoReady).length;
+  const btCount = ASSETS.filter(a => a.maturity === "battle-tested").length;
+
+  const stats = [
+    { value: ASSETS.length, label: "Total Assets", color: "text-sky-500" },
+    { value: btCount, label: "Battle-Tested", color: "text-sky-500" },
+    { value: demoCount, label: "Demo-Ready", color: "text-emerald-500" },
+    { value: totalDeploys, label: "Total Deploys", color: "text-purple-500" },
+  ];
+
+  return (
+    <div className="animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="px-4 py-8 md:px-10">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Welcome back, {userName}</h1>
+        <p className="mt-1 text-sm text-gray-500">Here's what's happening across the AIMPLIFY platform</p>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 gap-4 px-4 pb-6 md:grid-cols-4 md:px-10">
+        {stats.map((stat, i) => (
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1 }}
+            className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+          >
+            <div className={`text-3xl font-bold ${stat.color}`}>{stat.value}</div>
+            <div className="mt-1 text-xs font-medium text-gray-500 uppercase tracking-wide">{stat.label}</div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Families */}
+      <div className="px-4 pb-8 md:px-10">
+        <h2 className="mb-4 text-sm font-bold text-gray-900 uppercase tracking-wide">Platform Families</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {Object.entries(FAMILIES).map(([k, f], i) => {
+            const count = ASSETS.filter(a => a.family === k).length;
+            return (
+              <motion.div
+                key={k}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2 + i * 0.05 }}
+                whileHover={{ y: -4, boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)" }}
+                onClick={() => navigate(`/family/${k}`)}
+                className="group cursor-pointer rounded-xl border border-gray-200 bg-white p-5 transition-all"
+                style={{ borderTop: `3px solid ${f.color}` }}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-base font-bold" style={{ color: f.color }}>{f.name}</span>
+                  <span 
+                    className="rounded-full px-2 py-0.5 text-xs font-bold"
+                    style={{ backgroundColor: `${f.color}15`, color: f.color }}
+                  >
+                    {count}
+                  </span>
+                </div>
+                <div className="text-xs leading-relaxed text-gray-500 group-hover:text-gray-700 transition-colors">
+                  {f.tagline}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Two columns layout */}
+      <div className="grid grid-cols-1 gap-6 px-4 pb-12 md:grid-cols-2 md:px-10">
+        
+        {/* Popular Assets */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-sm font-bold text-gray-900 uppercase tracking-wide">Most Deployed Assets</h2>
+          <div className="flex flex-col">
+            {recentAssets.map(a => {
+              const fm = FAMILIES[a.family];
+              return (
+                <div 
+                  key={a.id} 
+                  onClick={() => navigate(`/catalog/${a.id}`)}
+                  className="group flex cursor-pointer items-center gap-3 border-b border-gray-100 py-3 transition-colors hover:bg-gray-50"
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: fm.color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm font-medium text-gray-900">{a.name}</div>
+                    <div className="text-xs text-gray-500">{a.id} · {fm.name}</div>
+                  </div>
+                  <div className="text-sm font-bold text-gray-700">{a.stats.deployments}</div>
+                  <ArrowRight className="h-4 w-4 text-gray-300 transition-transform group-hover:translate-x-1" />
+                </div>
+              );
+            })}
+          </div>
+          <button 
+            onClick={() => navigate('/catalog')}
+            className="mt-4 text-sm font-medium text-sky-500 hover:text-sky-600 flex items-center gap-1"
+          >
+            View full catalog <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Activity & Pipeline */}
+        <div className="flex flex-col gap-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
+              <Activity className="h-4 w-4 text-gray-400" /> Recent Activity
+            </h2>
+            <div className="flex flex-col">
+              {ACTIVITY.map((a, i) => (
+                <div key={i} className={`py-2.5 ${i < ACTIVITY.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                  <div className="text-sm text-gray-600">
+                    <span className="font-semibold text-gray-900">{a.who}</span> {a.action} <span className="font-medium" style={{ color: a.color }}>{a.what}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-gray-400">{a.time}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {pendingSubs.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Pipeline</h2>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-600">
+                  {pendingSubs.length} pending
+                </span>
+              </div>
+              <div className="flex flex-col">
+                {pendingSubs.slice(0, 3).map(s => (
+                  <div 
+                    key={s.id} 
+                    onClick={() => navigate(`/pipeline/${s.id}`)}
+                    className="group flex cursor-pointer items-center gap-3 border-b border-gray-100 py-3 hover:bg-gray-50"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-sm font-medium text-gray-900">{s.name}</div>
+                      <div className="text-xs text-gray-500 capitalize">{s.status.replace('-', ' ')}</div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-300 transition-transform group-hover:translate-x-1" />
+                  </div>
+                ))}
+              </div>
+              <button 
+                onClick={() => navigate('/pipeline')}
+                className="mt-4 text-sm font-medium text-sky-500 hover:text-sky-600 flex items-center gap-1"
+              >
+                View pipeline <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
