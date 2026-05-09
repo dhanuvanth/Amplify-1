@@ -63,7 +63,9 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
     quickStart: normalizeText(submission.commands),
     prerequisites,
     dependencies,
-    stats: { deployments: 0, demos: launchDemoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore },
+    // Option B heuristic: published submission-backed assets count as 1 deploy
+    // until real deployment telemetry is captured for them.
+    stats: { deployments: 1, demos: launchDemoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore },
     changelog: [{ ver: 'v1.0.0', date: submission.date, desc: 'Published from contribution pipeline.' }],
     tags,
     launchDemoUrl,

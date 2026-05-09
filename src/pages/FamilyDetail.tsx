@@ -1,14 +1,36 @@
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, ChevronRight, CheckCircle2 } from 'lucide-react';
-import { FAMILIES, ASSETS } from '../data/mock';
+import { FAMILIES } from '../data/mock';
 import { AssetCard } from '../components/catalog/AssetCard';
 import { Button } from '../components/ui/Button';
+import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
 
 export function FamilyDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  
+  const [assets, setAssets] = useState<CatalogAsset[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrate() {
+      const catalogAssets = await loadCatalogAssets();
+      if (!cancelled) {
+        setAssets(catalogAssets);
+        setIsLoading(false);
+      }
+    }
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
   if (!id || !FAMILIES[id]) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
@@ -19,7 +41,7 @@ export function FamilyDetail() {
   }
 
   const f = FAMILIES[id];
-  const assets = ASSETS.filter(a => a.family === id);
+  const familyAssets = assets.filter((asset) => asset.family === id);
   const depArr = Array.isArray(f.dependsOn) ? f.dependsOn : [f.dependsOn];
 
   return (
@@ -50,13 +72,13 @@ export function FamilyDetail() {
             
             <div className="flex flex-wrap gap-4">
               {[
-                [assets.length, 'Assets'],
-                [assets.filter(a => a.maturity === 'battle-tested').length, 'Battle-Tested'],
-                [assets.filter(a => a.demoReady).length, 'Demo-Ready'],
-                [assets.reduce((s, a) => s + a.stats.deployments, 0), 'Deploys']
+                [familyAssets.length, 'Assets'],
+                [familyAssets.filter((asset) => asset.maturity === 'battle-tested').length, 'Battle-Tested'],
+                [familyAssets.filter((asset) => asset.demoReady).length, 'Demo-Ready'],
+                [familyAssets.reduce((sum, asset) => sum + asset.stats.deployments, 0), 'Deploys']
               ].map(([n, l], i) => (
                 <div key={i} className="min-w-[80px] rounded-xl border border-white/50 bg-white p-3 text-center shadow-sm">
-                  <div className="text-2xl font-bold" style={{ color: f.color }}>{n}</div>
+                  <div className="text-2xl font-bold" style={{ color: f.color }}>{isLoading ? '...' : n}</div>
                   <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">{l}</div>
                 </div>
               ))}
@@ -144,7 +166,7 @@ export function FamilyDetail() {
       <div className="px-4 md:px-10">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-bold text-gray-900">
-            Assets <span className="font-normal text-gray-500">({assets.length})</span>
+            Assets <span className="font-normal text-gray-500">({isLoading ? '...' : familyAssets.length})</span>
           </h2>
           <button 
             onClick={() => navigate('/submit')}
@@ -155,7 +177,11 @@ export function FamilyDetail() {
           </button>
         </div>
         
-        {assets.length === 0 ? (
+        {isLoading ? (
+          <div className="rounded-xl border border-gray-200 bg-white py-16 text-center text-sm font-medium text-gray-500 shadow-sm">
+            Loading family assets...
+          </div>
+        ) : familyAssets.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 py-20 text-center">
             <h3 className="text-sm font-medium text-gray-500">No assets yet in this family.</h3>
             <button onClick={() => navigate('/submit')} className="mt-2 text-sm font-medium text-sky-500 hover:text-sky-600">
@@ -164,7 +190,7 @@ export function FamilyDetail() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {assets.map((a, i) => (
+            {familyAssets.map((a, i) => (
               <AssetCard key={a.id} asset={a} index={i} />
             ))}
           </div>

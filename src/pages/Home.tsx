@@ -2,13 +2,34 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Activity } from 'lucide-react';
-import { ASSETS, FAMILIES, ACTIVITY, SUBS0 } from '../data/mock';
+import { FAMILIES, ACTIVITY } from '../data/mock';
+import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
+import { loadSubmissions, type PipelineSubmission } from '../lib/pipeline';
 
 export function Home() {
   const navigate = useNavigate();
   const [userName, setUserName] = useState('');
+  const [assets, setAssets] = useState<CatalogAsset[]>([]);
+  const [submissions, setSubmissions] = useState<PipelineSubmission[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
+    let cancelled = false;
+
+    async function hydrate() {
+      const [catalogAssets, pipelineSubmissions] = await Promise.all([
+        loadCatalogAssets(),
+        loadSubmissions(),
+      ]);
+      if (!cancelled) {
+        setAssets(catalogAssets);
+        setSubmissions(pipelineSubmissions);
+        setIsLoading(false);
+      }
+    }
+
+    void hydrate();
+
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try {
@@ -16,17 +37,21 @@ export function Home() {
         setUserName(u.name.split(' ')[0] || u.name);
       } catch (e) {}
     }
+    
+    return () => {
+      cancelled = true;
+    };
   }, []);
   
-  const recentAssets = [...ASSETS].sort((a, b) => b.stats.deployments - a.stats.deployments).slice(0, 5);
-  const pendingSubs = SUBS0.filter(s => s.status !== 'approved');
+  const recentAssets = [...assets].sort((a, b) => b.stats.deployments - a.stats.deployments).slice(0, 5);
+  const pendingSubs = submissions.filter((submission) => submission.status !== 'Published');
   
-  const totalDeploys = ASSETS.reduce((s, a) => s + a.stats.deployments, 0);
-  const demoCount = ASSETS.filter(a => a.demoReady).length;
-  const btCount = ASSETS.filter(a => a.maturity === "battle-tested").length;
+  const totalDeploys = assets.reduce((s, a) => s + a.stats.deployments, 0);
+  const demoCount = assets.filter(a => a.demoReady).length;
+  const btCount = assets.filter(a => a.maturity === "battle-tested").length;
 
   const stats = [
-    { value: ASSETS.length, label: "Total Assets", color: "text-sky-500" },
+    { value: assets.length, label: "Total Assets", color: "text-sky-500" },
     { value: btCount, label: "Battle-Tested", color: "text-sky-500" },
     { value: demoCount, label: "Demo-Ready", color: "text-emerald-500" },
     { value: totalDeploys, label: "Total Deploys", color: "text-purple-500" },
@@ -61,7 +86,7 @@ export function Home() {
         <h2 className="mb-4 text-sm font-bold text-gray-900 uppercase tracking-wide">Platform Families</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {Object.entries(FAMILIES).map(([k, f], i) => {
-            const count = ASSETS.filter(a => a.family === k).length;
+            const count = assets.filter((asset) => asset.family === k).length;
             return (
               <motion.div
                 key={k}
@@ -75,11 +100,11 @@ export function Home() {
               >
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-base font-bold" style={{ color: f.color }}>{f.name}</span>
-                  <span 
+                  <span
                     className="rounded-full px-2 py-0.5 text-xs font-bold"
                     style={{ backgroundColor: `${f.color}15`, color: f.color }}
                   >
-                    {count}
+                    {isLoading ? '...' : count}
                   </span>
                 </div>
                 <div className="text-xs leading-relaxed text-gray-500 group-hover:text-gray-700 transition-colors">
@@ -152,7 +177,7 @@ export function Home() {
                 </span>
               </div>
               <div className="flex flex-col">
-                {pendingSubs.slice(0, 3).map(s => (
+              {pendingSubs.slice(0, 3).map(s => (
                   <div 
                     key={s.id} 
                     onClick={() => navigate(`/pipeline/${s.id}`)}
@@ -160,7 +185,7 @@ export function Home() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="truncate text-sm font-medium text-gray-900">{s.name}</div>
-                      <div className="text-xs text-gray-500 capitalize">{s.status.replace('-', ' ')}</div>
+                    <div className="text-xs text-gray-500">{s.status}</div>
                     </div>
                     <ArrowRight className="h-4 w-4 text-gray-300 transition-transform group-hover:translate-x-1" />
                   </div>
