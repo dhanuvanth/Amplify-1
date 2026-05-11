@@ -3,8 +3,10 @@ import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, ChevronRight, Info, PackagePlus } from 'lucide-react';
 import { FAMILIES } from '../data/mock';
+import { DemoVideoDropzone } from '../components/media/DemoVideoDropzone';
+import { isFirebaseConfigured } from '../lib/firebase';
 import { Button } from '../components/ui/Button';
-import { createSubmission, getSubmission, updateSubmissionRevision } from '../lib/pipeline';
+import { createSubmission, getSubmission, updatePublishedSubmission, updateSubmissionRevision } from '../lib/pipeline';
 
 const categoryOptions = [
   'AI Context',
@@ -43,10 +45,13 @@ export function Submit() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const revisionId = searchParams.get('revision');
+  const publishedId = searchParams.get('published');
   const [isDone, setIsDone] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [revisionNote, setRevisionNote] = useState('');
+  const [publishedMeta, setPublishedMeta] = useState<{ submitter: string; submitterInit: string } | null>(null);
+  const [publishedHydrating, setPublishedHydrating] = useState(!!publishedId);
   const [formData, setFormData] = useState(emptyFormData);
   const [tagDrafts, setTagDrafts] = useState({
     clouds: '',
@@ -56,9 +61,61 @@ export function Submit() {
   });
 
   useEffect(() => {
-    if (!revisionId) {
-      setFormData(emptyFormData);
+    if (!publishedId) {
+      setPublishedMeta(null);
+      setPublishedHydrating(false);
+      return;
+    }
+
+    const recordId = publishedId;
+    let cancelled = false;
+    setPublishedHydrating(true);
+    setError('');
+
+    async function hydratePublished() {
+      const submission = await getSubmission(recordId);
+      if (cancelled) return;
+      if (!submission || submission.status !== 'Published' || submission.id.startsWith('SUB-')) {
+        if (!cancelled) setPublishedHydrating(false);
+        navigate('/pipeline', { replace: true });
+        return;
+      }
+      setPublishedMeta({ submitter: submission.submitter, submitterInit: submission.submitterInit });
+      setFormData({
+        name: submission.name,
+        family: submission.family,
+        category: submission.category,
+        solution: submission.solution,
+        ownerEmail: submission.ownerEmail ?? emptyFormData.ownerEmail,
+        repoUrl: submission.repoUrl ?? '',
+        demoUrl: submission.demoUrl ?? '',
+        videoUrl: submission.videoUrl ?? '',
+        maturity: submission.maturity,
+        clouds: submission.clouds.filter((cloud) => cloud !== 'Not applicable'),
+        attachmentUrl: '',
+        desc: submission.desc,
+        dependencies: detailToTags(submission.dependencies),
+        prerequisites: detailToTags(submission.prerequisites),
+        commands: submission.commands === 'Not applicable' ? '' : submission.commands,
+        architectures: detailToTags(submission.architectures),
+      });
       setRevisionNote('');
+      setPublishedHydrating(false);
+    }
+
+    void hydratePublished();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [publishedId, navigate]);
+
+  useEffect(() => {
+    if (publishedId || !revisionId) {
+      if (!revisionId && !publishedId) {
+        setFormData(emptyFormData);
+        setRevisionNote('');
+      }
       return;
     }
 
@@ -95,7 +152,7 @@ export function Submit() {
     return () => {
       cancelled = true;
     };
-  }, [revisionId]);
+  }, [revisionId, publishedId]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -105,14 +162,16 @@ export function Submit() {
     setError('');
 
     try {
+      const submitter = publishedMeta?.submitter ?? 'Dhanuvanth SenthilKumar';
+      const submitterInit = publishedMeta?.submitterInit ?? 'DS';
       const payload = {
         name: formData.name.trim(),
         family: formData.family,
         category: formData.category,
         solution: formData.solution,
-        submitter: 'Dhanuvanth SenthilKumar',
-        submitterInit: 'DS',
-        status: 'Submitted' as const,
+        submitter,
+        submitterInit,
+        status: (publishedId ? 'Published' : 'Submitted') as 'Published' | 'Submitted',
         desc: formData.desc.trim(),
         ownerEmail: formData.ownerEmail,
         repoUrl: formData.repoUrl,
@@ -126,14 +185,24 @@ export function Submit() {
         architectures: tagListOrNotApplicable(formData.architectures),
         attachments: [],
       };
-      if (revisionId) {
+      if (publishedId) {
+        await updatePublishedSubmission(publishedId, payload);
+      } else if (revisionId) {
         await updateSubmissionRevision(revisionId, payload);
       } else {
         await createSubmission(payload);
       }
       setIsDone(true);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : revisionId ? 'Unable to resubmit this asset.' : 'Unable to submit this asset.');
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : publishedId
+            ? 'Unable to update this published record.'
+            : revisionId
+              ? 'Unable to resubmit this asset.'
+              : 'Unable to submit this asset.',
+      );
     } finally {
       setIsSaving(false);
     }
@@ -183,20 +252,30 @@ export function Submit() {
     formData.desc.trim().length > 0 &&
     formData.clouds.length > 0;
 
+  const canSubmit = isFormValid && !isSaving && (!publishedId || publishedMeta);
+
+  if (publishedId && publishedHydrating) {
+    return <div className="py-24 text-center text-sm font-medium text-gray-500">Loading published record…</div>;
+  }
+
   if (isDone) {
     return (
       <div className="flex flex-col items-center justify-center py-32 px-4 animate-in fade-in zoom-in duration-500">
         <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-500 shadow-sm ring-8 ring-emerald-50">
           <CheckCircle2 className="h-8 w-8" />
         </div>
-        <h2 className="mb-2 text-2xl font-bold text-gray-900">{revisionId ? 'Resubmitted Successfully' : 'Submitted Successfully'}</h2>
+        <h2 className="mb-2 text-2xl font-bold text-gray-900">
+          {publishedId ? 'Published Record Updated' : revisionId ? 'Resubmitted Successfully' : 'Submitted Successfully'}
+        </h2>
         <p className="mb-8 max-w-md text-center text-sm leading-relaxed text-gray-500">
-          {revisionId
-            ? 'The contribution has been sent back to AI Review with your corrections.'
-            : 'The contribution is now in the pipeline. It will move through AI Review, Manual Approval, approval, and publishing.'}
+          {publishedId
+            ? 'Changes are saved. The catalog and pipeline now reflect this updated published asset.'
+            : revisionId
+              ? 'The contribution has been sent back to AI Review with your corrections.'
+              : 'The contribution is now in the pipeline. It will move through AI Review, Manual Approval, approval, and publishing.'}
         </p>
-        <Button onClick={() => navigate('/pipeline')} size="lg" className="gap-2">
-          View Pipeline <ChevronRight className="h-4 w-4" />
+        <Button onClick={() => navigate(publishedId ? `/pipeline/${publishedId}` : '/pipeline')} size="lg" className="gap-2">
+          {publishedId ? 'Back to record' : 'View Pipeline'} <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
     );
@@ -207,7 +286,9 @@ export function Submit() {
       <div className="flex items-center gap-2 px-4 py-4 text-sm md:px-10">
         <button onClick={() => navigate('/pipeline')} className="font-medium text-sky-500 transition-colors hover:text-sky-600">Pipeline</button>
         <span className="text-gray-300">/</span>
-        <span className="font-medium text-gray-900">{revisionId ? 'Revise Asset' : 'Submit Asset'}</span>
+        <span className="font-medium text-gray-900">
+          {publishedId ? 'Edit Published' : revisionId ? 'Revise Asset' : 'Submit Asset'}
+        </span>
       </div>
 
       <div className="mx-auto max-w-5xl px-4 pb-12 md:px-10">
@@ -216,16 +297,29 @@ export function Submit() {
             <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-sky-200">
               <PackagePlus className="h-4 w-4" /> Contribution Intake
             </div>
-            <h1 className="text-3xl font-bold tracking-tight">{revisionId ? 'Revise Asset Submission' : 'Submit a New Asset'}</h1>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {publishedId ? 'Edit Published Asset' : revisionId ? 'Revise Asset Submission' : 'Submit a New Asset'}
+            </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
-              {revisionId
-                ? 'Update the requested metadata, links, and reusable asset details, then resubmit for AI Review.'
-                : 'Capture the metadata required for AI review, manual approval, and organization-wide publishing.'}
+              {publishedId
+                ? 'Update any field including the demo video. Replacing the video removes the previous file from storage when it was uploaded to this app’s Firebase bucket.'
+                : revisionId
+                  ? 'Update the requested metadata, links, and reusable asset details, then resubmit for AI Review.'
+                  : 'Capture the metadata required for AI review, manual approval, and organization-wide publishing.'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6 p-6 md:p-8">
-            {revisionId && revisionNote && (
+            {publishedId && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3">
+                <div className="text-sm font-bold text-emerald-800">Editing a published record</div>
+                <p className="mt-1 text-sm leading-relaxed text-gray-700">
+                  Status stays Published. To remove this asset entirely, use Delete on the pipeline detail page.
+                </p>
+              </div>
+            )}
+
+            {revisionId && revisionNote && !publishedId && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="text-sm font-bold text-amber-700">Revision instructions from approver</div>
                 <p className="mt-1 text-sm leading-relaxed text-gray-700">{revisionNote}</p>
@@ -298,8 +392,26 @@ export function Submit() {
                 <input value={formData.demoUrl} onChange={(event) => setField('demoUrl', event.target.value)} placeholder="Paste the live demo, app, or hosted experience link" className="field-input" />
               </Field>
 
-              <Field label="Video Link" wide>
-                <input value={formData.videoUrl} onChange={(event) => setField('videoUrl', event.target.value)} placeholder="Paste the walkthrough, demo recording, or explainer video link" className="field-input" />
+              <Field label="Demo video" wide>
+                <DemoVideoDropzone
+                  videoUrl={formData.videoUrl}
+                  onVideoUrlChange={(url) => setField('videoUrl', url)}
+                  disabled={isSaving}
+                />
+                {!isFirebaseConfigured() && (
+                  <>
+                    <p className="mt-3 text-xs font-medium text-gray-500">
+                      Paste a hosted video URL (direct MP4/WebM or YouTube) only when Firebase upload is not configured.
+                    </p>
+                    <input
+                      value={formData.videoUrl}
+                      onChange={(event) => setField('videoUrl', event.target.value)}
+                      placeholder="https://…"
+                      className="field-input mt-2 font-mono text-xs"
+                      spellCheck={false}
+                    />
+                  </>
+                )}
               </Field>
 
               <Field label="Description" required wide>
@@ -384,8 +496,18 @@ export function Submit() {
             {error && <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{error}</p>}
 
             <div className="pt-2">
-              <Button type="submit" size="lg" disabled={!isFormValid || isSaving} className="w-full px-10 sm:w-auto">
-                {isSaving ? (revisionId ? 'Resubmitting...' : 'Submitting...') : revisionId ? 'Resubmit for AI Review' : 'Submit for Review'}
+              <Button type="submit" size="lg" disabled={!canSubmit} className="w-full px-10 sm:w-auto">
+                {isSaving
+                  ? publishedId
+                    ? 'Saving...'
+                    : revisionId
+                      ? 'Resubmitting...'
+                      : 'Submitting...'
+                  : publishedId
+                    ? 'Save changes'
+                    : revisionId
+                      ? 'Resubmit for AI Review'
+                      : 'Submit for Review'}
               </Button>
             </div>
           </form>

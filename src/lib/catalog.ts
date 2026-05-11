@@ -1,4 +1,5 @@
 import { ASSETS } from '../data/mock';
+import { supabase } from './supabase';
 import { loadSubmissions, type PipelineSubmission } from './pipeline';
 
 export type CatalogFamily = 'atlas' | 'forge' | 'relay' | 'sentinel' | 'nexus';
@@ -51,7 +52,36 @@ export async function loadCatalogAssets(): Promise<CatalogAsset[]> {
 
 export async function getCatalogAsset(id: string): Promise<CatalogAsset | null> {
   const assets = await loadCatalogAssets();
-  return assets.find((asset) => asset.id === id) ?? null;
+  const base = assets.find((asset) => asset.id === id) ?? null;
+  if (!base) return null;
+
+  const fromSupabase = await fetchSupabaseVideoUrlForAsset(id);
+  if (!fromSupabase) return base;
+
+  const merged = applyVideoUrlFromSupabase(base, fromSupabase);
+  return merged;
+}
+
+/** Prefer `assets.video_url` from Supabase when set (catalog id = assets.id, e.g. ATL-001). */
+async function fetchSupabaseVideoUrlForAsset(assetId: string): Promise<string | undefined> {
+  if (!supabase) return undefined;
+  const { data, error } = await supabase.from('assets').select('video_url').eq('id', assetId).maybeSingle();
+  if (error || !data) return undefined;
+  const url = typeof data.video_url === 'string' ? data.video_url.trim() : '';
+  return url || undefined;
+}
+
+function applyVideoUrlFromSupabase(asset: CatalogAsset, videoUrl: string): CatalogAsset {
+  const hasDemo = Boolean(asset.launchDemoUrl || asset.demoUrl);
+  return {
+    ...asset,
+    videoUrl,
+    demoReady: Boolean(hasDemo || videoUrl),
+    stats: {
+      ...asset.stats,
+      demos: asset.stats.demos || (videoUrl ? 1 : 0),
+    },
+  };
 }
 
 function submissionToAsset(submission: PipelineSubmission, index: number): CatalogAsset {
@@ -79,7 +109,7 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
     clouds,
     maturity: normalizeMaturity(submission.maturity),
     effort: 'medium',
-    demoReady: Boolean(launchDemoUrl),
+    demoReady: Boolean(launchDemoUrl || videoUrl),
     solution: submission.solution,
     owner: submission.submitter,
     ownerInit: submission.submitterInit,
@@ -92,7 +122,7 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
     dependencies,
     // Option B heuristic: published submission-backed assets count as 1 deploy
     // until real deployment telemetry is captured for them.
-    stats: { deployments: 1, demos: launchDemoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore },
+    stats: { deployments: 1, demos: launchDemoUrl || videoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore },
     changelog: [{ ver: 'v1.0.0', date: submission.date, desc: 'Published from contribution pipeline.' }],
     tags,
     launchDemoUrl,

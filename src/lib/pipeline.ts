@@ -1,5 +1,6 @@
 import { SUBS0 } from '../data/mock';
 import { supabase } from './supabase';
+import { deleteFirebaseObjectAtUrlIfOurs } from './storageDelete';
 
 export type PipelineStatus =
   | 'Submitted'
@@ -192,6 +193,20 @@ export async function createSubmission(input: Omit<PipelineSubmission, 'id' | 'd
       status: input.status,
       score: 68,
       description: input.desc,
+      owner_email: input.ownerEmail,
+      repo_url: input.repoUrl,
+      demo_url: input.demoUrl,
+      video_url: input.videoUrl,
+      clouds: input.clouds,
+      maturity: input.maturity,
+      category: input.category,
+      solution: input.solution,
+      dependencies: input.dependencies,
+      prerequisites: input.prerequisites,
+      commands: input.commands,
+      architecture: input.architectures,
+      architectures: input.architectures,
+      attachments: input.attachments,
       submitted_at: today(),
     })
     .select()
@@ -223,6 +238,91 @@ export async function updateSubmissionStatus(id: string, status: PipelineStatus,
 
   const { error: fallbackError } = await supabase.from('submissions').update({ status }).eq('id', id);
   if (fallbackError) throw fallbackError;
+}
+
+/** Update a **Published** submission in place (status stays Published). Deletes prior Firebase video if URL changes or clears. */
+export async function updatePublishedSubmission(
+  id: string,
+  input: Omit<PipelineSubmission, 'id' | 'date' | 'aiScore' | 'aiFindings' | 'govReviewer' | 'govNotes'>,
+) {
+  const existing = await getSubmission(id);
+  if (!existing) throw new Error('Submission not found.');
+  if (existing.status !== 'Published') {
+    throw new Error('Only published submissions can be edited this way.');
+  }
+
+  const oldVideo = existing.videoUrl?.trim();
+  const newVideo = input.videoUrl?.trim();
+  if (oldVideo && oldVideo !== newVideo) {
+    await deleteFirebaseObjectAtUrlIfOurs(oldVideo);
+  }
+
+  if (!supabase) {
+    saveLocalSubmission({
+      ...existing,
+      ...input,
+      id,
+      status: 'Published',
+      date: existing.date,
+      aiScore: existing.aiScore,
+      aiFindings: existing.aiFindings,
+      govReviewer: existing.govReviewer,
+      govNotes: existing.govNotes,
+    });
+    return;
+  }
+
+  const { error } = await supabase
+    .from('submissions')
+    .update({
+      asset_name: input.name,
+      family_id: input.family,
+      category: input.category,
+      solution: input.solution,
+      author: input.submitter,
+      author_initials: input.submitterInit,
+      status: 'Published' as PipelineStatus,
+      description: input.desc,
+      owner_email: input.ownerEmail,
+      repo_url: input.repoUrl,
+      demo_url: input.demoUrl,
+      video_url: newVideo || null,
+      clouds: input.clouds,
+      maturity: input.maturity,
+      dependencies: input.dependencies,
+      prerequisites: input.prerequisites,
+      commands: input.commands,
+      architecture: input.architectures,
+      architectures: input.architectures,
+      attachments: input.attachments,
+    })
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+/** Delete submission row and remove demo video from Firebase Storage when URL points at our bucket. */
+export async function deleteSubmission(id: string) {
+  if (id.startsWith('SUB-')) {
+    throw new Error('Sample pipeline records cannot be deleted.');
+  }
+
+  const existing = await getSubmission(id);
+  if (!existing) throw new Error('Submission not found.');
+  if (existing.status !== 'Published') {
+    throw new Error('Only published submissions can be deleted from this screen.');
+  }
+
+  await deleteFirebaseObjectAtUrlIfOurs(existing.videoUrl);
+
+  if (!supabase) {
+    removeLocalSubmission(id);
+    return;
+  }
+
+  const { error } = await supabase.from('submissions').delete().eq('id', id);
+  if (error) throw error;
+  removeLocalSubmission(id);
 }
 
 export async function updateSubmissionRevision(
@@ -310,6 +410,13 @@ export function loadLocalSubmissions(): PipelineSubmission[] {
 function saveLocalSubmission(item: PipelineSubmission) {
   const saved = loadLocalSubmissions().filter((entry) => entry.id !== item.id && !entry.id.startsWith('SUB-'));
   localStorage.setItem(localKey, JSON.stringify([item, ...saved]));
+}
+
+function removeLocalSubmission(id: string) {
+  const stored = localStorage.getItem(localKey);
+  const saved = stored ? (JSON.parse(stored) as PipelineSubmission[]) : [];
+  const next = saved.filter((entry) => entry.id !== id);
+  localStorage.setItem(localKey, JSON.stringify(next));
 }
 
 function updateLocalStatus(id: string, status: PipelineStatus, revisionNote = '') {
@@ -414,6 +521,18 @@ function enrichSubmission(
 ) {
   return {
     ...saved,
+    name: input.name,
+    family: input.family,
+    category: input.category,
+    solution: input.solution,
+    desc: input.desc,
+    ownerEmail: input.ownerEmail ?? saved.ownerEmail,
+    repoUrl: input.repoUrl || saved.repoUrl,
+    demoUrl: input.demoUrl || saved.demoUrl,
+    videoUrl: input.videoUrl || saved.videoUrl,
+    clouds: input.clouds?.length ? input.clouds : saved.clouds,
+    maturity: input.maturity,
+    status: input.status,
     dependencies: input.dependencies,
     prerequisites: input.prerequisites,
     commands: input.commands,

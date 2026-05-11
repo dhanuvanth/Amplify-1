@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, ExternalLink, X } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, Pencil, Trash2, Video, X } from 'lucide-react';
 import { FAMILIES } from '../data/mock';
 import { Button } from '../components/ui/Button';
-import { getSubmission, type PipelineSubmission, statusConfig } from '../lib/pipeline';
+import { DemoVideoModal } from '../components/media/DemoVideoModal';
+import { deleteSubmission, getSubmission, type PipelineSubmission, statusConfig } from '../lib/pipeline';
 
 export function PipelineDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [submission, setSubmission] = useState<PipelineSubmission | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [demoVideoOpen, setDemoVideoOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +60,26 @@ export function PipelineDetail() {
 
   const status = statusConfig[submission.status];
   const family = FAMILIES[submission.family] ?? FAMILIES.relay;
+  const canEditOrDelete =
+    submission.status === 'Published' && !submission.id.startsWith('SUB-');
+
+  const handleDelete = async () => {
+    if (!canEditOrDelete || !id) return;
+    const confirmed = window.confirm(
+      'Delete this published record? This removes the row from the database and deletes the demo video from Firebase Storage when it was uploaded here.',
+    );
+    if (!confirmed) return;
+    setDeleteError('');
+    setIsDeleting(true);
+    try {
+      await deleteSubmission(id);
+      navigate('/pipeline');
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="animate-in fade-in duration-500 pb-12">
@@ -82,9 +106,25 @@ export function PipelineDetail() {
             </span>
           </div>
 
-          <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900">
-            {submission.name}
-          </h1>
+          <div className="mb-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+              {submission.name}
+            </h1>
+            {canEditOrDelete && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" className="gap-2" onClick={() => navigate(`/submit?published=${submission.id}`)}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button type="button" variant="outline" className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50" disabled={isDeleting} onClick={() => void handleDelete()}>
+                  <Trash2 className="h-4 w-4" /> {isDeleting ? 'Deleting…' : 'Delete'}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {deleteError && (
+            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700">{deleteError}</p>
+          )}
 
           <p className="max-w-2xl text-base leading-relaxed text-gray-600">
             {submission.desc}
@@ -101,7 +141,15 @@ export function PipelineDetail() {
             <Meta label="Owner Email" value={submission.ownerEmail ?? 'Not provided'} />
             {submission.repoUrl && <Meta label="Repository" value={submission.repoUrl} href={submission.repoUrl} />}
             {submission.demoUrl && <Meta label="Demo Link" value={submission.demoUrl} href={submission.demoUrl} />}
-            {submission.videoUrl && <Meta label="Video Link" value={submission.videoUrl} href={submission.videoUrl} />}
+            {submission.videoUrl && (
+              <div className="md:col-span-2 rounded-xl border border-gray-200 bg-sky-50/40 p-4">
+                <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">Demo video</div>
+                <p className="mb-3 break-all font-mono text-[11px] leading-relaxed text-gray-700">{submission.videoUrl}</p>
+                <Button type="button" size="sm" className="gap-2" onClick={() => setDemoVideoOpen(true)}>
+                  <Video className="h-4 w-4" /> Play demo
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -147,6 +195,13 @@ export function PipelineDetail() {
               })}
             </div>
           </div>
+
+          <DemoVideoModal
+            open={demoVideoOpen}
+            url={submission.videoUrl ?? ''}
+            title={submission.name}
+            onClose={() => setDemoVideoOpen(false)}
+          />
 
           {(submission.govReviewer || submission.status === 'Needs Changes') && (
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">

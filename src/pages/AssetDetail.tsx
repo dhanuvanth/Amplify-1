@@ -6,6 +6,7 @@ import { FAMILIES, CC, CL, MC, ML, ACM } from '../data/mock';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getCatalogAsset, loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
+import { DemoVideoModal } from '../components/media/DemoVideoModal';
 
 export function AssetDetail() {
   const { id } = useParams();
@@ -14,6 +15,7 @@ export function AssetDetail() {
   const [asset, setAsset] = useState<CatalogAsset | null>(null);
   const [relatedAssets, setRelatedAssets] = useState<CatalogAsset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [demoVideoOpen, setDemoVideoOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -75,6 +77,14 @@ export function AssetDetail() {
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const openDemoVideo = () => {
+    if (!videoUrl?.trim()) {
+      window.alert('Demo video is not available for this asset yet.');
+      return;
+    }
+    setDemoVideoOpen(true);
   };
 
   const tabs = [
@@ -156,14 +166,21 @@ export function AssetDetail() {
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => openExternalLink(videoUrl, 'Video link')}
+                onClick={openDemoVideo}
                 className="gap-2"
                 disabled={!hasVideo}
               >
-                <Video className="h-4 w-4" /> Watch Videos
+                <Video className="h-4 w-4" /> Watch demo
               </Button>
             </div>
           </div>
+
+          <DemoVideoModal
+            open={demoVideoOpen}
+            url={videoUrl ?? ''}
+            title={asset.name}
+            onClose={() => setDemoVideoOpen(false)}
+          />
 
           {/* Tabs */}
           <div>
