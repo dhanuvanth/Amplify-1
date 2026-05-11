@@ -1,7 +1,34 @@
 import { ASSETS } from '../data/mock';
 import { loadSubmissions, type PipelineSubmission } from './pipeline';
 
-export type CatalogAsset = typeof ASSETS[number] & {
+export type CatalogFamily = 'atlas' | 'forge' | 'relay' | 'sentinel' | 'nexus';
+export type CatalogCloud = 'aws' | 'gcp' | 'azure';
+export type CatalogMaturity = 'experimental' | 'validated' | 'battle-tested';
+export type CatalogEffort = 'low' | 'medium' | 'high';
+
+/** Widen static + pipeline assets so filters and submissions stay type-safe. */
+export type CatalogAsset = {
+  id: string;
+  name: string;
+  family: CatalogFamily;
+  category: string;
+  clouds: CatalogCloud[];
+  maturity: CatalogMaturity;
+  effort: CatalogEffort;
+  demoReady: boolean;
+  solution: string;
+  owner: string;
+  ownerInit: string;
+  desc: string;
+  longDesc: string;
+  architecture: string[];
+  archColors: string[];
+  quickStart: string;
+  prerequisites: { name: string; done: boolean }[];
+  dependencies: string[];
+  stats: { deployments: number; demos: number; projects: number; satisfaction: number };
+  changelog: { ver: string; date: string; desc: string }[];
+  tags: string[];
   displayId?: string;
   launchDemoUrl?: string;
   demoUrl?: string;
@@ -19,7 +46,7 @@ export async function loadCatalogAssets(): Promise<CatalogAsset[]> {
   const staticIds = new Set(ASSETS.map((asset) => asset.id));
   const uniquePublishedAssets = publishedAssets.filter((asset) => !staticIds.has(asset.id));
 
-  return [...uniquePublishedAssets, ...ASSETS] as CatalogAsset[];
+  return [...uniquePublishedAssets, ...(ASSETS as unknown as CatalogAsset[])];
 }
 
 export async function getCatalogAsset(id: string): Promise<CatalogAsset | null> {
@@ -86,20 +113,22 @@ function familyPrefix(family: string) {
   return prefixes[family] ?? 'AST';
 }
 
-function normalizeFamily(value: string) {
+function normalizeFamily(value: string): CatalogFamily {
   const family = value.toLowerCase();
-  if (family in { atlas: true, forge: true, relay: true, sentinel: true, nexus: true }) return family;
+  if (family === 'atlas' || family === 'forge' || family === 'relay' || family === 'sentinel' || family === 'nexus') {
+    return family;
+  }
   return 'relay';
 }
 
-function normalizeMaturity(value: string) {
+function normalizeMaturity(value: string): CatalogMaturity {
   const maturity = value.toLowerCase();
   if (maturity.includes('battle')) return 'battle-tested';
   if (maturity.includes('valid') || maturity.includes('demo')) return 'validated';
   return 'experimental';
 }
 
-function normalizeClouds(values: string[]) {
+function normalizeClouds(values: string[]): CatalogCloud[] {
   const normalized = values
     .map((cloud) => cloud.toLowerCase())
     .map((cloud) => {
@@ -108,9 +137,9 @@ function normalizeClouds(values: string[]) {
       if (cloud.includes('azure')) return 'azure';
       return '';
     })
-    .filter(Boolean);
+    .filter(Boolean) as CatalogCloud[];
 
-  return normalized.length ? Array.from(new Set(normalized)) : ['aws'];
+  return (normalized.length ? Array.from(new Set(normalized)) : ['aws']) as CatalogCloud[];
 }
 
 function detailToList(value: string, fallback: string[]) {

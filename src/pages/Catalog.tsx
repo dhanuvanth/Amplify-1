@@ -7,7 +7,7 @@ import { AssetRow } from '../components/catalog/AssetRow';
 import { Button } from '../components/ui/Button';
 import { LayoutGrid, List, SearchX } from 'lucide-react';
 import { cn } from '../utils/cn';
-import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
+import { loadCatalogAssets, type CatalogAsset, type CatalogCloud } from '../lib/catalog';
 
 export function Catalog() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -45,7 +45,7 @@ export function Catalog() {
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
       if (familyFilter !== 'all' && a.family !== familyFilter) return false;
-      if (cloudFilters.length && !cloudFilters.some(c => a.clouds.includes(c))) return false;
+      if (cloudFilters.length && !cloudFilters.some((c) => a.clouds.includes(c as CatalogCloud))) return false;
       if (maturityFilters.length && !maturityFilters.includes(a.maturity)) return false;
       if (demoReady && !a.demoReady) return false;
       if (query) {
