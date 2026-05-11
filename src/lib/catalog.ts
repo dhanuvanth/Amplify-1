@@ -2,6 +2,9 @@ import { ASSETS } from '../data/mock';
 import { supabase } from './supabase';
 import { loadSubmissions, type PipelineSubmission } from './pipeline';
 
+/** Only static seed catalog rows use `assets.video_url` as an overlay; pipeline-published UUIDs read video from `submissions` only. */
+const STATIC_CATALOG_IDS = new Set(ASSETS.map((asset) => asset.id));
+
 export type CatalogFamily = 'atlas' | 'forge' | 'relay' | 'sentinel' | 'nexus';
 export type CatalogCloud = 'aws' | 'gcp' | 'azure';
 export type CatalogMaturity = 'experimental' | 'validated' | 'battle-tested';
@@ -55,14 +58,17 @@ export async function getCatalogAsset(id: string): Promise<CatalogAsset | null> 
   const base = assets.find((asset) => asset.id === id) ?? null;
   if (!base) return null;
 
+  if (!STATIC_CATALOG_IDS.has(id)) {
+    return base;
+  }
+
   const fromSupabase = await fetchSupabaseVideoUrlForAsset(id);
   if (!fromSupabase) return base;
 
-  const merged = applyVideoUrlFromSupabase(base, fromSupabase);
-  return merged;
+  return applyVideoUrlFromSupabase(base, fromSupabase);
 }
 
-/** Prefer `assets.video_url` from Supabase when set (catalog id = assets.id, e.g. ATL-001). */
+/** Prefer `assets.video_url` from Supabase for **static** catalog ids (e.g. ATL-001), not pipeline UUIDs. */
 async function fetchSupabaseVideoUrlForAsset(assetId: string): Promise<string | undefined> {
   if (!supabase) return undefined;
   const { data, error } = await supabase.from('assets').select('video_url').eq('id', assetId).maybeSingle();

@@ -167,6 +167,9 @@ drop policy if exists "public read submissions" on submissions;
 drop policy if exists "public insert submissions" on submissions;
 drop policy if exists "public update submissions" on submissions;
 drop policy if exists "public insert assets" on assets;
+drop policy if exists "public update assets" on assets;
+drop policy if exists "public delete assets" on assets;
+drop policy if exists "public delete submissions" on submissions;
 drop policy if exists "public insert changelog" on asset_changelog;
 drop policy if exists "public read activity" on activity_log;
 
@@ -179,6 +182,9 @@ create policy "public read submissions" on submissions for select to anon, authe
 create policy "public insert submissions" on submissions for insert to anon, authenticated with check (true);
 create policy "public update submissions" on submissions for update to anon, authenticated using (true) with check (true);
 create policy "public insert assets" on assets for insert to anon, authenticated with check (true);
+create policy "public update assets" on assets for update to anon, authenticated using (true) with check (true);
+create policy "public delete assets" on assets for delete to anon, authenticated using (true);
+create policy "public delete submissions" on submissions for delete to anon, authenticated using (true);
 create policy "public insert changelog" on asset_changelog for insert to anon, authenticated with check (true);
 create policy "public read activity" on activity_log for select to anon, authenticated using (true);
 

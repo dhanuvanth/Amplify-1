@@ -272,7 +272,11 @@ export async function updatePublishedSubmission(
     return;
   }
 
-  const { error } = await supabase
+  const repoTrim = input.repoUrl?.trim();
+  const demoTrim = input.demoUrl?.trim();
+  const videoForDb: string | null = newVideo ? newVideo : null;
+
+  const { data: updatedRows, error } = await supabase
     .from('submissions')
     .update({
       asset_name: input.name,
@@ -283,10 +287,10 @@ export async function updatePublishedSubmission(
       author_initials: input.submitterInit,
       status: 'Published' as PipelineStatus,
       description: input.desc,
-      owner_email: input.ownerEmail,
-      repo_url: input.repoUrl,
-      demo_url: input.demoUrl,
-      video_url: newVideo || null,
+      owner_email: input.ownerEmail?.trim() || null,
+      repo_url: repoTrim || null,
+      demo_url: demoTrim || null,
+      video_url: videoForDb,
       clouds: input.clouds,
       maturity: input.maturity,
       dependencies: input.dependencies,
@@ -296,9 +300,15 @@ export async function updatePublishedSubmission(
       architectures: input.architectures,
       attachments: input.attachments,
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 
   if (error) throw error;
+  if (!updatedRows?.length) {
+    throw new Error('Update did not change any row. Check the submission id and Supabase update permissions (RLS).');
+  }
+
+  await syncAssetsVideoUrlMirror(id, videoForDb);
 }
 
 /** Delete submission row and remove demo video from Firebase Storage when URL points at our bucket. */
@@ -320,8 +330,30 @@ export async function deleteSubmission(id: string) {
     return;
   }
 
-  const { error } = await supabase.from('submissions').delete().eq('id', id);
-  if (error) throw error;
+  const { data: rpcData, error: rpcError } = await supabase.rpc('delete_published_catalog', { p_id: id });
+  if (rpcError) {
+    const msg = rpcError.message?.toLowerCase() ?? '';
+    const missingRpc =
+      rpcError.code === 'PGRST202' ||
+      msg.includes('does not exist') ||
+      msg.includes('could not find the function') ||
+      msg.includes('unknown function');
+    if (missingRpc) {
+      await deletePublishedCatalogClientFallback(id);
+      removeLocalSubmission(id);
+      return;
+    }
+    throw rpcError;
+  }
+
+  const result = rpcData as { ok?: boolean; error?: string; submissions_deleted?: number };
+  if (!result?.ok || !result.submissions_deleted) {
+    throw new Error(
+      result?.error === 'submission_not_found'
+        ? 'That submission was not found or was already deleted.'
+        : 'The database could not delete this record. Apply migration `supabase/migrations/20260512_rpc_delete_published_catalog.sql`.',
+    );
+  }
   removeLocalSubmission(id);
 }
 
@@ -417,6 +449,30 @@ function removeLocalSubmission(id: string) {
   const saved = stored ? (JSON.parse(stored) as PipelineSubmission[]) : [];
   const next = saved.filter((entry) => entry.id !== id);
   localStorage.setItem(localKey, JSON.stringify(next));
+}
+
+/** Mirror row in `assets` (same `id` as submission) — keep `video_url` in sync. Ignores failures (no row / no RLS policy). */
+async function syncAssetsVideoUrlMirror(id: string, videoUrl: string | null) {
+  if (!supabase) return;
+  await supabase.from('assets').update({ video_url: videoUrl }).eq('id', id);
+}
+
+/** When RPC `delete_published_catalog` is not deployed: delete submission first, then mirror `assets` row. */
+async function deletePublishedCatalogClientFallback(id: string) {
+  if (!supabase) return;
+  const { data: deletedRows, error: subErr } = await supabase.from('submissions').delete().eq('id', id).select('id');
+  if (subErr) throw subErr;
+  if (!deletedRows?.length) {
+    throw new Error(
+      'No submission row was deleted. In Supabase, allow DELETE on `submissions` for the anon key, or apply migration `20260512_rpc_delete_published_catalog.sql`.',
+    );
+  }
+  const { error: assetErr } = await supabase.from('assets').delete().eq('id', id);
+  if (assetErr) {
+    throw new Error(
+      `The submission was removed, but the catalog row in "assets" could not be deleted: ${assetErr.message}. Delete that row in the Table Editor or apply migrations that grant DELETE on "assets".`,
+    );
+  }
 }
 
 function updateLocalStatus(id: string, status: PipelineStatus, revisionNote = '') {

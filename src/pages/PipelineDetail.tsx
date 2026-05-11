@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, ExternalLink, Pencil, Trash2, Video, X } from 'lucide-react';
 import { FAMILIES } from '../data/mock';
 import { Button } from '../components/ui/Button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { DemoVideoModal } from '../components/media/DemoVideoModal';
 import { deleteSubmission, getSubmission, type PipelineSubmission, statusConfig } from '../lib/pipeline';
 
@@ -14,6 +15,7 @@ export function PipelineDetail() {
   const [demoVideoOpen, setDemoVideoOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,25 +65,24 @@ export function PipelineDetail() {
   const canEditOrDelete =
     submission.status === 'Published' && !submission.id.startsWith('SUB-');
 
-  const handleDelete = async () => {
+  const performDelete = async () => {
     if (!canEditOrDelete || !id) return;
-    const confirmed = window.confirm(
-      'Delete this published record? This removes the row from the database and deletes the demo video from Firebase Storage when it was uploaded here.',
-    );
-    if (!confirmed) return;
     setDeleteError('');
     setIsDeleting(true);
     try {
       await deleteSubmission(id);
+      setDeleteConfirmOpen(false);
       navigate('/pipeline');
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Delete failed.');
+      setDeleteConfirmOpen(false);
     } finally {
       setIsDeleting(false);
     }
   };
 
   return (
+    <>
     <div className="animate-in fade-in duration-500 pb-12">
       <div className="flex items-center gap-2 px-4 py-4 text-sm md:px-10">
         <button onClick={() => navigate('/pipeline')} className="font-medium text-sky-500 transition-colors hover:text-sky-600">Pipeline</button>
@@ -115,8 +116,14 @@ export function PipelineDetail() {
                 <Button type="button" variant="outline" className="gap-2" onClick={() => navigate(`/submit?published=${submission.id}`)}>
                   <Pencil className="h-4 w-4" /> Edit
                 </Button>
-                <Button type="button" variant="outline" className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50" disabled={isDeleting} onClick={() => void handleDelete()}>
-                  <Trash2 className="h-4 w-4" /> {isDeleting ? 'Deleting…' : 'Delete'}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
                 </Button>
               </div>
             )}
@@ -203,6 +210,20 @@ export function PipelineDetail() {
             onClose={() => setDemoVideoOpen(false)}
           />
 
+          <ConfirmDialog
+            open={deleteConfirmOpen}
+            title="Delete this published asset?"
+            description={`“${submission.name}” will be removed from the pipeline and catalog in Supabase, including the mirror catalog row when present. Any demo video stored in this app’s Firebase Storage for this record will also be removed.`}
+            confirmLabel="Delete permanently"
+            cancelLabel="Keep asset"
+            variant="danger"
+            isPending={isDeleting}
+            onClose={() => {
+              if (!isDeleting) setDeleteConfirmOpen(false);
+            }}
+            onConfirm={() => void performDelete()}
+          />
+
           {(submission.govReviewer || submission.status === 'Needs Changes') && (
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
               <h3 className="mb-6 flex items-center gap-2 text-lg font-bold text-gray-900">
@@ -225,6 +246,7 @@ export function PipelineDetail() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

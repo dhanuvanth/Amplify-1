@@ -16,6 +16,6 @@ export async function deleteFirebaseObjectAtUrlIfOurs(url: string | null | undef
     const fileRef = ref(storage, trimmed);
     await deleteObject(fileRef);
   } catch {
-    // Object missing, rules, or network — do not block DB delete/update.
+    // Object missing (DELETE 404 in DevTools is normal), rules, or network — do not block DB delete/update.
   }
 }
