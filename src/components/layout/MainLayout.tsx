@@ -3,6 +3,7 @@ import { Home, LayoutGrid, ListChecks, PlusCircle, Search, X, LogOut, ChevronDow
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '../../utils/cn';
 import { loadSubmissions } from '../../lib/pipeline';
+import { CopyrightFooter } from './CopyrightFooter';
 
 export function MainLayout() {
   const navigate = useNavigate();
@@ -62,9 +63,9 @@ export function MainLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#FAFBFC] text-slate-900 font-sans">
+    <div className="flex min-h-screen flex-col bg-[#FAFBFC] font-sans text-slate-900">
       {/* Navigation Bar */}
-      <nav className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-gray-200 bg-white/80 px-4 md:px-8 lg:px-10 backdrop-blur-md">
+      <nav className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-gray-200 bg-white/80 px-4 md:px-8 lg:px-10 backdrop-blur-md">
         <div className="flex items-center gap-8">
           <div 
             className="flex cursor-pointer items-center gap-3" 
@@ -181,9 +182,11 @@ export function MainLayout() {
       </nav>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-7xl">
+      <main className="mx-auto w-full max-w-7xl flex-1">
         <Outlet />
       </main>
+
+      <CopyrightFooter />
     </div>
   );
 }

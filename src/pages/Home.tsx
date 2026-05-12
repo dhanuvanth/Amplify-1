@@ -65,9 +65,20 @@ export function Home() {
   return (
     <div className="animate-in fade-in duration-500">
       {/* Header */}
-      <div className="px-4 py-8 md:px-10">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Welcome back, {userName}</h1>
-        <p className="mt-1 text-sm text-gray-500">Here's what's happening across the AIMPLIFY platform</p>
+      <div className="flex flex-col gap-6 px-4 py-8 sm:flex-row sm:items-start sm:justify-between md:px-10">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Welcome back, {userName}</h1>
+          <p className="mt-1 text-sm text-gray-500">Here's what's happening across the AIMPLIFY platform</p>
+        </div>
+        <div className="flex shrink-0 items-center justify-center sm:justify-end">
+          <img
+            src="/infovision_logo.png"
+            alt="InfoVision"
+            className="h-16 w-auto max-w-[min(100%,360px)] object-contain sm:h-[4.5rem] md:h-20"
+            width={360}
+            height={80}
+          />
+        </div>
       </div>
 
       {/* Stats Grid */}
