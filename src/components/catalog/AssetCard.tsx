@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { FAMILIES, CC, CL, MC, ML, EC } from '../../data/mock';
+import { defaultFamilyBadge, useFamilies } from '../../context/FamiliesContext';
+import { CC, CL, MC, ML, EC } from '../../data/uiConstants';
 import { CheckCircle2 } from 'lucide-react';
 
 interface AssetCardProps {
@@ -10,7 +11,8 @@ interface AssetCardProps {
 
 export function AssetCard({ asset, index }: AssetCardProps) {
   const navigate = useNavigate();
-  const fm = FAMILIES[asset.family];
+  const { families } = useFamilies();
+  const fm = families[asset.family] ?? defaultFamilyBadge();
 
   return (
     <motion.div

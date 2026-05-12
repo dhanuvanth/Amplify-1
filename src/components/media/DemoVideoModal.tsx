@@ -1,24 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-
-function parseYoutubeEmbedUrl(url: string): string | null {
-  try {
-    const u = new URL(url.trim());
-    if (u.hostname === 'youtu.be') {
-      const id = u.pathname.replace(/^\//, '').split('/')[0];
-      return id ? `https://www.youtube.com/embed/${id}` : null;
-    }
-    if (u.hostname.includes('youtube.com')) {
-      const v = u.searchParams.get('v');
-      if (v) return `https://www.youtube.com/embed/${v}`;
-      const m = u.pathname.match(/\/embed\/([^/?]+)/);
-      if (m?.[1]) return `https://www.youtube.com/embed/${m[1]}`;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
+import { getDemoMediaPresentationKind, parseYoutubeEmbedUrl } from '../../lib/demoMediaUrl';
 
 type DemoVideoModalProps = {
   open: boolean;
@@ -50,13 +32,15 @@ export function DemoVideoModal({ open, url, title, onClose }: DemoVideoModalProp
   if (!open || !url.trim()) return null;
 
   const youtubeEmbed = parseYoutubeEmbedUrl(url);
+  const kind = getDemoMediaPresentationKind(url);
+  const heading = title ?? (kind === 'image' ? 'Demo image' : 'Demo video');
 
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Demo video"
+      aria-label={kind === 'image' ? 'Demo image' : 'Demo video'}
       onClick={onClose}
     >
       <div
@@ -64,7 +48,7 @@ export function DemoVideoModal({ open, url, title, onClose }: DemoVideoModalProp
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <div className="min-w-0 truncate text-sm font-bold text-white">{title ?? 'Demo video'}</div>
+          <div className="min-w-0 truncate text-sm font-bold text-white">{heading}</div>
           <button
             type="button"
             onClick={onClose}
@@ -83,6 +67,16 @@ export function DemoVideoModal({ open, url, title, onClose }: DemoVideoModalProp
                 className="h-full w-full"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
+              />
+            </div>
+          ) : kind === 'image' ? (
+            <div className="flex max-h-[min(85vh,720px)] min-h-[min(50vw,280px)] w-full items-center justify-center overflow-auto rounded-lg bg-neutral-950 p-2">
+              <img
+                src={url}
+                alt={title ? `Demo image: ${title}` : 'Demo image'}
+                className="max-h-[min(85vh,680px)] w-auto max-w-full object-contain"
+                loading="lazy"
+                decoding="async"
               />
             </div>
           ) : (

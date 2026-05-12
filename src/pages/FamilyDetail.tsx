@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, ChevronRight, CheckCircle2 } from 'lucide-react';
-import { FAMILIES } from '../data/mock';
+import { useFamilies } from '../context/FamiliesContext';
 import { AssetCard } from '../components/catalog/AssetCard';
 import { Button } from '../components/ui/Button';
 import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
@@ -10,6 +10,7 @@ import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
 export function FamilyDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { families, loading: familiesLoading } = useFamilies();
   const [assets, setAssets] = useState<CatalogAsset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -31,18 +32,27 @@ export function FamilyDetail() {
     };
   }, [id]);
 
-  if (!id || !FAMILIES[id]) {
+  if (familiesLoading) {
+    return (
+      <div className="py-24 text-center text-sm font-medium text-gray-500">Loading platform family…</div>
+    );
+  }
+
+  if (!id || !families[id]) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <h2 className="text-xl font-bold text-gray-900">Family not found</h2>
+        <p className="mt-2 max-w-md text-center text-sm text-gray-500">
+          This family is not configured in Supabase <code className="rounded bg-gray-100 px-1">platform_families</code>, or data failed to load.
+        </p>
         <Button className="mt-4" onClick={() => navigate('/')}>Back to Home</Button>
       </div>
     );
   }
 
-  const f = FAMILIES[id];
+  const f = families[id];
   const familyAssets = assets.filter((asset) => asset.family === id);
-  const depArr = Array.isArray(f.dependsOn) ? f.dependsOn : [f.dependsOn];
+  const depArr = f.dependsOn.length ? f.dependsOn : ['—'];
 
   return (
     <div className="animate-in fade-in duration-500 pb-12">
@@ -92,7 +102,7 @@ export function FamilyDetail() {
               <h3 className="text-[11px] font-bold uppercase tracking-widest" style={{ color: f.color }}>When to Sell</h3>
             </div>
             <div className="space-y-4">
-              {f.useCases.map((u: string, i: number) => (
+              {(f.useCases.length ? f.useCases : ['—']).map((u: string, i: number) => (
                 <div key={i} className="flex gap-2 text-sm text-gray-600 leading-relaxed">
                   <ChevronRight className="h-4 w-4 shrink-0 mt-0.5" style={{ color: f.color }} />
                   <span>{u}</span>
@@ -123,7 +133,7 @@ export function FamilyDetail() {
               <h3 className="text-[11px] font-bold uppercase tracking-widest text-emerald-600">Enables</h3>
             </div>
             <div className="space-y-4">
-              {f.enables.map((e: string, i: number) => (
+              {(f.enables.length ? f.enables : ['—']).map((e: string, i: number) => (
                 <div key={i} className="flex gap-2 text-sm text-gray-600 leading-relaxed">
                   <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-500" />
                   <span>{e}</span>
@@ -134,7 +144,8 @@ export function FamilyDetail() {
         </div>
       </div>
 
-      {/* Signature Solutions */}
+      {/* Signature Solutions (from `signature_solutions` table) */}
+      {f.solutions.length > 0 && (
       <div className="px-4 pb-10 md:px-10">
         <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500">Signature Solutions</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -161,6 +172,7 @@ export function FamilyDetail() {
           })}
         </div>
       </div>
+      )}
 
       {/* Assets Grid */}
       <div className="px-4 md:px-10">

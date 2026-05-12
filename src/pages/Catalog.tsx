@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import { FAMILIES, CC, CL, ML } from '../data/mock';
+import { useFamilies } from '../context/FamiliesContext';
+import { CC, CL, ML } from '../data/uiConstants';
 import { AssetCard } from '../components/catalog/AssetCard';
 import { AssetRow } from '../components/catalog/AssetRow';
 import { Button } from '../components/ui/Button';
@@ -10,6 +11,7 @@ import { cn } from '../utils/cn';
 import { loadCatalogAssets, type CatalogAsset, type CatalogCloud } from '../lib/catalog';
 
 export function Catalog() {
+  const { families } = useFamilies();
   const [searchParams, setSearchParams] = useSearchParams();
   
   const query = searchParams.get('q') || '';
@@ -105,7 +107,7 @@ export function Catalog() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 px-4 pb-6 md:px-10">
         <FilterChip active={familyFilter === 'all'} onClick={() => setFamilyFilter('all')} color="#6B7280">All</FilterChip>
-        {Object.entries(FAMILIES).map(([k, f]) => (
+        {Object.entries(families).map(([k, f]) => (
           <FilterChip key={k} active={familyFilter === k} onClick={() => setFamilyFilter(k)} color={f.color}>{f.name}</FilterChip>
         ))}
         

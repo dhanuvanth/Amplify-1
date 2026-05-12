@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { FamiliesProvider } from './context/FamiliesContext';
 import { MainLayout } from './components/layout/MainLayout';
 import { Home } from './pages/Home';
 import { Catalog } from './pages/Catalog';
@@ -12,6 +13,7 @@ import { Login } from './pages/Login';
 function App() {
   return (
     <BrowserRouter>
+      <FamiliesProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<MainLayout />}>
@@ -25,6 +27,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+      </FamiliesProvider>
     </BrowserRouter>
   );
 }

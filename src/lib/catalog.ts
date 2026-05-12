@@ -1,16 +1,18 @@
-import { ASSETS } from '../data/mock';
 import { supabase } from './supabase';
-import { loadSubmissions, type PipelineSubmission } from './pipeline';
-
-/** Only static seed catalog rows use `assets.video_url` as an overlay; pipeline-published UUIDs read video from `submissions` only. */
-const STATIC_CATALOG_IDS = new Set(ASSETS.map((asset) => asset.id));
+import {
+  getSubmission,
+  loadLocalSubmissions,
+  loadSubmissions,
+  rowToSubmission,
+  type PipelineSubmission,
+  type SubmissionRow,
+} from './pipeline';
 
 export type CatalogFamily = 'atlas' | 'forge' | 'relay' | 'sentinel' | 'nexus';
 export type CatalogCloud = 'aws' | 'gcp' | 'azure';
 export type CatalogMaturity = 'experimental' | 'validated' | 'battle-tested';
 export type CatalogEffort = 'low' | 'medium' | 'high';
 
-/** Widen static + pipeline assets so filters and submissions stay type-safe. */
 export type CatalogAsset = {
   id: string;
   name: string;
@@ -41,53 +43,70 @@ export type CatalogAsset = {
   sourceSubmissionId?: string;
 };
 
+const ARCH_COLORS = ['blue', 'purple', 'orange', 'green'] as const;
+
+const CATALOG_CODE_RE = /\bCatalog id\s+([A-Z]{2,4}-\d{3})\b/i;
+
+/** Only submissions that have cleared the pipeline appear in the public catalog. */
+function isPublishedCatalogSubmission(submission: PipelineSubmission): boolean {
+  return submission.status === 'Published';
+}
+
+function extractCatalogCodeFromGovNotes(govNotes: string | undefined): string | undefined {
+  if (!govNotes?.trim()) return undefined;
+  const m = govNotes.match(CATALOG_CODE_RE);
+  return m?.[1];
+}
+
+function compareSubmissionDate(a: PipelineSubmission, b: PipelineSubmission) {
+  return (b.date || '').localeCompare(a.date || '');
+}
+
+/**
+ * Public catalog: **Published** pipeline submissions only (not draft `assets` rows).
+ * Home, family counts, and catalog browse all use this.
+ */
 export async function loadCatalogAssets(): Promise<CatalogAsset[]> {
   const submissions = await loadSubmissions();
-  const publishedAssets = submissions
-    .filter((submission) => submission.status === 'Published')
-    .map((submission, index) => submissionToAsset(submission, index));
-
-  const staticIds = new Set(ASSETS.map((asset) => asset.id));
-  const uniquePublishedAssets = publishedAssets.filter((asset) => !staticIds.has(asset.id));
-
-  return [...uniquePublishedAssets, ...(ASSETS as unknown as CatalogAsset[])];
+  const published = submissions.filter(isPublishedCatalogSubmission).sort(compareSubmissionDate);
+  return published.map((submission, index) => submissionToAsset(submission, index));
 }
 
+/**
+ * Resolve a catalog asset by **submission UUID** or legacy **catalog code** (e.g. ATL-001) when
+ * `gov_notes` contains `Catalog id ATL-001` (seed / import convention).
+ */
 export async function getCatalogAsset(id: string): Promise<CatalogAsset | null> {
-  const assets = await loadCatalogAssets();
-  const base = assets.find((asset) => asset.id === id) ?? null;
-  if (!base) return null;
+  const trimmed = id?.trim();
+  if (!trimmed) return null;
 
-  if (!STATIC_CATALOG_IDS.has(id)) {
-    return base;
+  const byId = await getSubmission(trimmed);
+  if (byId?.status === 'Published') {
+    return submissionToAsset(byId, 0);
   }
 
-  const fromSupabase = await fetchSupabaseVideoUrlForAsset(id);
-  if (!fromSupabase) return base;
+  if (/^[A-Z]{2,4}-\d{3}$/i.test(trimmed)) {
+    const code = trimmed.toUpperCase();
+    if (supabase) {
+      const { data: byNote, error: noteErr } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('status', 'Published')
+        .ilike('gov_notes', `%Catalog id ${code}%`)
+        .limit(1)
+        .maybeSingle();
 
-  return applyVideoUrlFromSupabase(base, fromSupabase);
-}
+      if (!noteErr && byNote) {
+        return submissionToAsset(rowToSubmission(byNote as SubmissionRow), 0);
+      }
+    } else {
+      const local = loadLocalSubmissions().filter(isPublishedCatalogSubmission);
+      const byNote = local.find((submission) => submission.govNotes?.includes(`Catalog id ${code}`));
+      if (byNote) return submissionToAsset(byNote, 0);
+    }
+  }
 
-/** Prefer `assets.video_url` from Supabase for **static** catalog ids (e.g. ATL-001), not pipeline UUIDs. */
-async function fetchSupabaseVideoUrlForAsset(assetId: string): Promise<string | undefined> {
-  if (!supabase) return undefined;
-  const { data, error } = await supabase.from('assets').select('video_url').eq('id', assetId).maybeSingle();
-  if (error || !data) return undefined;
-  const url = typeof data.video_url === 'string' ? data.video_url.trim() : '';
-  return url || undefined;
-}
-
-function applyVideoUrlFromSupabase(asset: CatalogAsset, videoUrl: string): CatalogAsset {
-  const hasDemo = Boolean(asset.launchDemoUrl || asset.demoUrl);
-  return {
-    ...asset,
-    videoUrl,
-    demoReady: Boolean(hasDemo || videoUrl),
-    stats: {
-      ...asset.stats,
-      demos: asset.stats.demos || (videoUrl ? 1 : 0),
-    },
-  };
+  return null;
 }
 
 function submissionToAsset(submission: PipelineSubmission, index: number): CatalogAsset {
@@ -106,9 +125,12 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
     ...clouds.map((cloud) => cloud.toUpperCase()),
   ].filter(Boolean)));
 
+  const fromGov = extractCatalogCodeFromGovNotes(submission.govNotes);
+  const displayId = fromGov ?? `${familyPrefix(family)}-${String(index + 1).padStart(3, '0')}`;
+
   return {
     id: submission.id,
-    displayId: `${familyPrefix(family)}-${String(index + 1).padStart(3, '0')}`,
+    displayId,
     name: submission.name,
     family,
     category: submission.category,
@@ -122,12 +144,10 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
     desc: submission.desc,
     longDesc: submission.desc || 'Published contribution from the AIMPLIFY review pipeline.',
     architecture,
-    archColors: architecture.map((_, index) => ['blue', 'purple', 'orange', 'green'][index % 4]),
+    archColors: architecture.map((_, i) => ARCH_COLORS[i % 4]),
     quickStart: normalizeText(submission.commands),
     prerequisites,
     dependencies,
-    // Option B heuristic: published submission-backed assets count as 1 deploy
-    // until real deployment telemetry is captured for them.
     stats: { deployments: 1, demos: launchDemoUrl || videoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore },
     changelog: [{ ver: 'v1.0.0', date: submission.date, desc: 'Published from contribution pipeline.' }],
     tags,

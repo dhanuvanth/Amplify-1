@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, ChevronRight, Info, PackagePlus } from 'lucide-react';
-import { FAMILIES } from '../data/mock';
+import { useFamilies } from '../context/FamiliesContext';
 import { DemoVideoDropzone } from '../components/media/DemoVideoDropzone';
-import { isFirebaseConfigured } from '../lib/firebase';
 import { Button } from '../components/ui/Button';
 import { createSubmission, getSubmission, updatePublishedSubmission, updateSubmissionRevision } from '../lib/pipeline';
 
@@ -43,6 +42,7 @@ const emptyFormData = {
 
 export function Submit() {
   const navigate = useNavigate();
+  const { families, loading: familiesLoading } = useFamilies();
   const [searchParams] = useSearchParams();
   const revisionId = searchParams.get('revision');
   const publishedId = searchParams.get('published');
@@ -75,7 +75,7 @@ export function Submit() {
     async function hydratePublished() {
       const submission = await getSubmission(recordId);
       if (cancelled) return;
-      if (!submission || submission.status !== 'Published' || submission.id.startsWith('SUB-')) {
+      if (!submission || submission.status !== 'Published') {
         if (!cancelled) setPublishedHydrating(false);
         navigate('/pipeline', { replace: true });
         return;
@@ -302,7 +302,7 @@ export function Submit() {
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
               {publishedId
-                ? 'Update any field including the demo video. Replacing the video removes the previous file from storage when it was uploaded to this app’s Firebase bucket.'
+                ? 'Update any field including the video or image demo. Replacing that file removes the previous upload from storage when it was stored in this app’s Firebase bucket.'
                 : revisionId
                   ? 'Update the requested metadata, links, and reusable asset details, then resubmit for AI Review.'
                   : 'Capture the metadata required for AI review, manual approval, and organization-wide publishing.'}
@@ -338,12 +338,16 @@ export function Submit() {
               </Field>
 
               <Field label="Platform Family" required>
-                <select value={formData.family} onChange={(event) => setFamily(event.target.value)} className="field-input" required>
-                  {Object.entries(FAMILIES).map(([key, family]) => (
-                    <option key={key} value={key}>
-                      {family.name} - {family.tagline}
-                    </option>
-                  ))}
+                <select value={formData.family} onChange={(event) => setFamily(event.target.value)} className="field-input" required disabled={familiesLoading}>
+                  {familiesLoading ? (
+                    <option value="">Loading platform families…</option>
+                  ) : (
+                    Object.entries(families).map(([key, family]) => (
+                      <option key={key} value={key}>
+                        {family.name} — {family.tagline}
+                      </option>
+                    ))
+                  )}
                 </select>
               </Field>
 
@@ -392,26 +396,12 @@ export function Submit() {
                 <input value={formData.demoUrl} onChange={(event) => setField('demoUrl', event.target.value)} placeholder="Paste the live demo, app, or hosted experience link" className="field-input" />
               </Field>
 
-              <Field label="Demo video" wide>
+              <Field label="Video or image demo" wide>
                 <DemoVideoDropzone
                   videoUrl={formData.videoUrl}
                   onVideoUrlChange={(url) => setField('videoUrl', url)}
                   disabled={isSaving}
                 />
-                {!isFirebaseConfigured() && (
-                  <>
-                    <p className="mt-3 text-xs font-medium text-gray-500">
-                      Paste a hosted video URL (direct MP4/WebM or YouTube) only when Firebase upload is not configured.
-                    </p>
-                    <input
-                      value={formData.videoUrl}
-                      onChange={(event) => setField('videoUrl', event.target.value)}
-                      placeholder="https://…"
-                      className="field-input mt-2 font-mono text-xs"
-                      spellCheck={false}
-                    />
-                  </>
-                )}
               </Field>
 
               <Field label="Description" required wide>

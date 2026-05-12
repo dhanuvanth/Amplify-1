@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Check, FileCheck2, Plus, RotateCcw, Send } from 'lucide-react';
-import { FAMILIES } from '../data/mock';
+import { defaultFamilyBadge, useFamilies } from '../context/FamiliesContext';
 import { Button } from '../components/ui/Button';
 import {
   loadSubmissions,
@@ -16,6 +16,7 @@ import {
 
 export function Pipeline() {
   const navigate = useNavigate();
+  const { families } = useFamilies();
   const [statusFilter, setStatusFilter] = useState<PipelineStatus | 'All'>('All');
   const [submissions, setSubmissions] = useState<PipelineSubmission[]>([]);
   const [revisionDrafts, setRevisionDrafts] = useState<Record<string, string>>({});
@@ -110,7 +111,7 @@ export function Pipeline() {
         ) : (
           filteredSubs.map((submission, index) => {
             const status = statusConfig[submission.status];
-            const family = FAMILIES[submission.family] ?? FAMILIES.relay;
+            const family = families[submission.family] ?? defaultFamilyBadge();
 
             return (
               <motion.div

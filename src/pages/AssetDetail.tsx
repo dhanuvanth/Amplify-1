@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Play, GitBranch, Info, Layers, Zap, CheckCircle2, ChevronRight, ArrowRight, Video } from 'lucide-react';
-import { FAMILIES, CC, CL, MC, ML, ACM } from '../data/mock';
+import { defaultFamilyBadge, useFamilies } from '../context/FamiliesContext';
+import { CC, CL, MC, ML, ACM } from '../data/uiConstants';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getCatalogAsset, loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
@@ -11,6 +12,7 @@ import { DemoVideoModal } from '../components/media/DemoVideoModal';
 export function AssetDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { families } = useFamilies();
   const [tab, setTab] = useState<'overview' | 'architecture' | 'quick-start'>('overview');
   const [asset, setAsset] = useState<CatalogAsset | null>(null);
   const [relatedAssets, setRelatedAssets] = useState<CatalogAsset[]>([]);
@@ -64,7 +66,7 @@ export function AssetDetail() {
     );
   }
 
-  const fm = FAMILIES[asset.family];
+  const fm = families[asset.family] ?? defaultFamilyBadge();
   const launchDemoUrl = asset.launchDemoUrl || asset.demoUrl;
   const repoUrl = asset.repoUrl;
   const videoUrl = asset.videoUrl;
@@ -81,7 +83,7 @@ export function AssetDetail() {
 
   const openDemoVideo = () => {
     if (!videoUrl?.trim()) {
-      window.alert('Demo video is not available for this asset yet.');
+      window.alert('No video or image demo is linked for this asset yet.');
       return;
     }
     setDemoVideoOpen(true);

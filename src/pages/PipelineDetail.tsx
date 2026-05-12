@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, ExternalLink, Pencil, Trash2, Video, X } from 'lucide-react';
-import { FAMILIES } from '../data/mock';
+import { defaultFamilyBadge, useFamilies } from '../context/FamiliesContext';
 import { Button } from '../components/ui/Button';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { DemoVideoModal } from '../components/media/DemoVideoModal';
@@ -10,6 +10,7 @@ import { deleteSubmission, getSubmission, type PipelineSubmission, statusConfig 
 export function PipelineDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { families } = useFamilies();
   const [submission, setSubmission] = useState<PipelineSubmission | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [demoVideoOpen, setDemoVideoOpen] = useState(false);
@@ -61,9 +62,8 @@ export function PipelineDetail() {
   }
 
   const status = statusConfig[submission.status];
-  const family = FAMILIES[submission.family] ?? FAMILIES.relay;
-  const canEditOrDelete =
-    submission.status === 'Published' && !submission.id.startsWith('SUB-');
+  const family = families[submission.family] ?? defaultFamilyBadge();
+  const canEditOrDelete = submission.status === 'Published';
 
   const performDelete = async () => {
     if (!canEditOrDelete || !id) return;
@@ -150,10 +150,10 @@ export function PipelineDetail() {
             {submission.demoUrl && <Meta label="Demo Link" value={submission.demoUrl} href={submission.demoUrl} />}
             {submission.videoUrl && (
               <div className="md:col-span-2 rounded-xl border border-gray-200 bg-sky-50/40 p-4">
-                <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">Demo video</div>
+                <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">Video or image demo</div>
                 <p className="mb-3 break-all font-mono text-[11px] leading-relaxed text-gray-700">{submission.videoUrl}</p>
                 <Button type="button" size="sm" className="gap-2" onClick={() => setDemoVideoOpen(true)}>
-                  <Video className="h-4 w-4" /> Play demo
+                  <Video className="h-4 w-4" /> View demo
                 </Button>
               </div>
             )}
@@ -213,7 +213,7 @@ export function PipelineDetail() {
           <ConfirmDialog
             open={deleteConfirmOpen}
             title="Delete this published asset?"
-            description={`“${submission.name}” will be removed from the pipeline and catalog in Supabase, including the mirror catalog row when present. Any demo video stored in this app’s Firebase Storage for this record will also be removed.`}
+            description={`“${submission.name}” will be removed from the pipeline and catalog in Supabase, including the mirror catalog row when present. Any demo video or image stored in this app’s Firebase Storage for this record will also be removed.`}
             confirmLabel="Delete permanently"
             cancelLabel="Keep asset"
             variant="danger"

@@ -2,28 +2,33 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Activity } from 'lucide-react';
-import { FAMILIES, ACTIVITY } from '../data/mock';
+import { defaultFamilyBadge, useFamilies } from '../context/FamiliesContext';
+import { loadRecentActivity, type ActivityFeedItem } from '../lib/activity';
 import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
 import { loadSubmissions, type PipelineSubmission } from '../lib/pipeline';
 
 export function Home() {
   const navigate = useNavigate();
+  const { families, loading: familiesLoading } = useFamilies();
   const [userName, setUserName] = useState('');
   const [assets, setAssets] = useState<CatalogAsset[]>([]);
   const [submissions, setSubmissions] = useState<PipelineSubmission[]>([]);
+  const [activity, setActivity] = useState<ActivityFeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
     let cancelled = false;
 
     async function hydrate() {
-      const [catalogAssets, pipelineSubmissions] = await Promise.all([
+      const [catalogAssets, pipelineSubmissions, activityRows] = await Promise.all([
         loadCatalogAssets(),
         loadSubmissions(),
+        loadRecentActivity(),
       ]);
       if (!cancelled) {
         setAssets(catalogAssets);
         setSubmissions(pipelineSubmissions);
+        setActivity(activityRows);
         setIsLoading(false);
       }
     }
@@ -84,8 +89,15 @@ export function Home() {
       {/* Families */}
       <div className="px-4 pb-8 md:px-10">
         <h2 className="mb-4 text-sm font-bold text-gray-900 uppercase tracking-wide">Platform Families</h2>
+        {familiesLoading ? (
+          <p className="text-sm text-gray-500">Loading platform families…</p>
+        ) : Object.keys(families).length === 0 ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            No platform families loaded. Ensure Supabase <code className="rounded bg-white/80 px-1">platform_families</code> has rows and your API keys are configured.
+          </p>
+        ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {Object.entries(FAMILIES).map(([k, f], i) => {
+          {Object.entries(families).map(([k, f], i) => {
             const count = assets.filter((asset) => asset.family === k).length;
             return (
               <motion.div
@@ -114,6 +126,7 @@ export function Home() {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Two columns layout */}
@@ -124,7 +137,7 @@ export function Home() {
           <h2 className="mb-4 text-sm font-bold text-gray-900 uppercase tracking-wide">Most Deployed Assets</h2>
           <div className="flex flex-col">
             {recentAssets.map(a => {
-              const fm = FAMILIES[a.family];
+              const fm = families[a.family] ?? defaultFamilyBadge();
               return (
                 <div 
                   key={a.id} 
@@ -157,14 +170,18 @@ export function Home() {
               <Activity className="h-4 w-4 text-gray-400" /> Recent Activity
             </h2>
             <div className="flex flex-col">
-              {ACTIVITY.map((a, i) => (
-                <div key={i} className={`py-2.5 ${i < ACTIVITY.length - 1 ? 'border-b border-gray-100' : ''}`}>
-                  <div className="text-sm text-gray-600">
-                    <span className="font-semibold text-gray-900">{a.who}</span> {a.action} <span className="font-medium" style={{ color: a.color }}>{a.what}</span>
+              {activity.length === 0 ? (
+                <p className="py-2 text-sm text-gray-500">No recent activity yet. Events from the database activity log will appear here.</p>
+              ) : (
+                activity.map((a, i) => (
+                  <div key={`${a.who}-${a.time}-${i}`} className={`py-2.5 ${i < activity.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                    <div className="text-sm text-gray-600">
+                      <span className="font-semibold text-gray-900">{a.who}</span> {a.action} <span className="font-medium" style={{ color: a.color }}>{a.what}</span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-400">{a.time}</div>
                   </div>
-                  <div className="mt-0.5 text-xs text-gray-400">{a.time}</div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { FAMILIES, CC, CL, MC, ML } from '../../data/mock';
+import { defaultFamilyBadge, useFamilies } from '../../context/FamiliesContext';
+import { CC, CL, MC, ML } from '../../data/uiConstants';
 import { ArrowRight } from 'lucide-react';
 
 interface AssetRowProps {
@@ -10,7 +11,8 @@ interface AssetRowProps {
 
 export function AssetRow({ asset, index }: AssetRowProps) {
   const navigate = useNavigate();
-  const fm = FAMILIES[asset.family];
+  const { families } = useFamilies();
+  const fm = families[asset.family] ?? defaultFamilyBadge();
 
   return (
     <motion.div

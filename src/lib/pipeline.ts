@@ -1,4 +1,3 @@
-import { SUBS0 } from '../data/mock';
 import { supabase } from './supabase';
 import { deleteFirebaseObjectAtUrlIfOurs } from './storageDelete';
 
@@ -38,7 +37,7 @@ export type PipelineSubmission = {
   govNotes: string;
 };
 
-type SubmissionRow = {
+export type SubmissionRow = {
   id: string;
   asset_name: string;
   family_id: string;
@@ -67,27 +66,6 @@ type SubmissionRow = {
   submitted_at: string;
 };
 
-type MockSubmission = {
-  id: string;
-  name: string;
-  submitter: string;
-  submitterInit: string;
-  date: string;
-  family: string;
-  category?: string;
-  solution?: string;
-  desc: string;
-  status: string;
-  aiScore: number;
-  dependencies?: string;
-  prerequisites?: string;
-  commands?: string;
-  architectures?: string;
-  aiFindings?: { category: string; status: string; detail: string }[];
-  govReviewer: string | null;
-  govNotes: string;
-};
-
 const localKey = 'aimplify:new-ui-submissions';
 const revisionNotesKey = 'aimplify:new-ui-revision-notes';
 
@@ -111,16 +89,15 @@ export const statusOptions: Array<PipelineStatus | 'All'> = [
 ];
 
 export async function loadSubmissions(): Promise<PipelineSubmission[]> {
-  const local = loadLocalSubmissions();
-
-  if (!supabase) return local;
+  if (!supabase) return loadLocalSubmissions();
 
   const { data, error } = await supabase
     .from('submissions')
     .select('*')
     .order('submitted_at', { ascending: false });
 
-  if (error || !data?.length) return local;
+  if (error) return loadLocalSubmissions();
+  if (!data?.length) return [];
   return (data as SubmissionRow[]).map(rowToSubmission);
 }
 
@@ -313,10 +290,6 @@ export async function updatePublishedSubmission(
 
 /** Delete submission row and remove demo video from Firebase Storage when URL points at our bucket. */
 export async function deleteSubmission(id: string) {
-  if (id.startsWith('SUB-')) {
-    throw new Error('Sample pipeline records cannot be deleted.');
-  }
-
   const existing = await getSubmission(id);
   if (!existing) throw new Error('Submission not found.');
   if (existing.status !== 'Published') {
@@ -435,12 +408,11 @@ export async function updateSubmissionRevision(
 
 export function loadLocalSubmissions(): PipelineSubmission[] {
   const stored = localStorage.getItem(localKey);
-  const saved = stored ? (JSON.parse(stored) as PipelineSubmission[]) : [];
-  return [...saved, ...SUBS0.map(mockToSubmission)];
+  return stored ? (JSON.parse(stored) as PipelineSubmission[]) : [];
 }
 
 function saveLocalSubmission(item: PipelineSubmission) {
-  const saved = loadLocalSubmissions().filter((entry) => entry.id !== item.id && !entry.id.startsWith('SUB-'));
+  const saved = loadLocalSubmissions().filter((entry) => entry.id !== item.id);
   localStorage.setItem(localKey, JSON.stringify([item, ...saved]));
 }
 
@@ -476,9 +448,7 @@ async function deletePublishedCatalogClientFallback(id: string) {
 }
 
 function updateLocalStatus(id: string, status: PipelineStatus, revisionNote = '') {
-  const saved = loadLocalSubmissions()
-    .filter((entry) => !entry.id.startsWith('SUB-'))
-    .map((entry) => (
+  const saved = loadLocalSubmissions().map((entry) => (
       entry.id === id
         ? {
             ...entry,
@@ -491,7 +461,7 @@ function updateLocalStatus(id: string, status: PipelineStatus, revisionNote = ''
   localStorage.setItem(localKey, JSON.stringify(saved));
 }
 
-function rowToSubmission(row: SubmissionRow): PipelineSubmission {
+export function rowToSubmission(row: SubmissionRow): PipelineSubmission {
   return {
     id: row.id,
     name: row.asset_name,
@@ -519,46 +489,6 @@ function rowToSubmission(row: SubmissionRow): PipelineSubmission {
     govReviewer: row.gov_reviewer ?? (row.status === 'Manual Approval' || row.status === 'Approved' ? 'Manual approver' : null),
     govNotes: row.gov_notes ?? getLocalRevisionNote(row.id) ?? (row.status === 'Needs Changes' ? 'Please update the requested metadata, links, demo evidence, and reusable asset details, then resubmit for AI Review.' : ''),
   };
-}
-
-function mockToSubmission(item: MockSubmission): PipelineSubmission {
-  return {
-    id: item.id,
-    name: item.name,
-    submitter: item.submitter,
-    submitterInit: item.submitterInit,
-    date: item.date,
-    family: item.family,
-    category: item.category ?? 'Process Automation',
-    solution: item.solution ?? 'Agent Orchestration',
-    desc: item.desc,
-    status: mockStatusToStatus(item.status),
-    aiScore: item.aiScore,
-    ownerEmail: undefined,
-    repoUrl: undefined,
-    demoUrl: undefined,
-    videoUrl: undefined,
-    clouds: ['AWS'],
-    maturity: 'Demo-ready',
-    dependencies: item.dependencies ?? 'Not applicable',
-    prerequisites: item.prerequisites ?? 'Not applicable',
-    commands: item.commands ?? 'Not applicable',
-    architectures: item.architectures ?? 'Not applicable',
-    attachments: [],
-    aiFindings: item.aiFindings?.map((finding) => ({
-      ...finding,
-      status: findingStatus(finding.status),
-    })) ?? defaultFindings(),
-    govReviewer: item.govReviewer,
-    govNotes: item.govNotes,
-  };
-}
-
-function mockStatusToStatus(status: string): PipelineStatus {
-  if (status === 'remediation') return 'Needs Changes';
-  if (status === 'governance') return 'Manual Approval';
-  if (status === 'approved') return 'Approved';
-  return 'AI Review';
 }
 
 function defaultFindings(): PipelineSubmission['aiFindings'] {
@@ -619,11 +549,6 @@ function normalizeAttachments(value: SubmissionRow['attachments']): PipelineSubm
       type: attachment.type || 'Link',
     }))
     .filter((attachment) => attachment.url);
-}
-
-function findingStatus(status: string): 'pass' | 'warn' | 'fail' {
-  if (status === 'pass' || status === 'warn' || status === 'fail') return status;
-  return 'warn';
 }
 
 function getLocalRevisionNotes(): Record<string, string> {
