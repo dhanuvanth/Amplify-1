@@ -119,8 +119,9 @@ export function FamilyDetail() {
             </div>
             <div className="space-y-4">
               {depArr.map((d: string, i: number) => (
-                <div key={i} className="text-sm text-gray-600 leading-relaxed font-medium">
-                  {d}
+                <div key={i} className="flex gap-2 text-sm text-gray-600 leading-relaxed">
+                  <ChevronRight className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
+                  <span>{d}</span>
                 </div>
               ))}
             </div>

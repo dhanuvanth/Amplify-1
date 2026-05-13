@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "gen:sql-xlsx": "node scripts/gen-supabase-from-aimplify-xlsx.mjs > supabase/migrations/20260512_excel_sync_catalog.sql",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -37,6 +38,7 @@
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "xlsx": "^0.18.5"
   }
 }

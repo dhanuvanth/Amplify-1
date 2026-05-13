@@ -47,6 +47,55 @@ const ARCH_COLORS = ['blue', 'purple', 'orange', 'green'] as const;
 
 const CATALOG_CODE_RE = /\bCatalog id\s+([A-Z]{2,4}-\d{3})\b/i;
 
+/** Matches `scripts/gen-supabase-from-aimplify-xlsx.mjs` — card copy + full About in one DB column. */
+const CARD_LONG_SPLIT = '\n---AIMPLIFY---\n';
+
+function splitCardAndLongDescription(raw: string): { card: string; long: string } {
+  const text = raw?.trim() || '';
+  const idx = text.indexOf(CARD_LONG_SPLIT);
+  if (idx === -1) {
+    return { card: text, long: text };
+  }
+  const card = text.slice(0, idx).trim();
+  const long = text.slice(idx + CARD_LONG_SPLIT.length).trim() || card;
+  return { card, long };
+}
+
+function extractJsonPrefixedLine<T>(govNotes: string | undefined, prefix: string): T | null {
+  if (!govNotes?.trim()) return null;
+  const line = govNotes.split('\n').find((l) => l.startsWith(prefix));
+  if (!line) return null;
+  const jsonPart = line.slice(prefix.length).trim();
+  try {
+    return JSON.parse(jsonPart) as T;
+  } catch {
+    return null;
+  }
+}
+
+function extractEffortFromGovNotes(govNotes: string | undefined): CatalogEffort | null {
+  const line = govNotes?.split('\n').find((l) => /^AIMPLIFY_EFFORT:/i.test(l));
+  if (!line) return null;
+  const v = line.replace(/^AIMPLIFY_EFFORT:\s*/i, '').trim().toLowerCase();
+  if (v === 'low' || v === 'medium' || v === 'high') return v;
+  return null;
+}
+
+function extractDemoReadyFromGovNotes(govNotes: string | undefined): boolean | null {
+  const line = govNotes?.split('\n').find((l) => /^AIMPLIFY_DEMO_READY:/i.test(l));
+  if (!line) return null;
+  const v = line.replace(/^AIMPLIFY_DEMO_READY:\s*/i, '').trim().toLowerCase();
+  if (v === 'yes' || v === 'true') return true;
+  if (v === 'no' || v === 'false') return false;
+  return null;
+}
+
+type AimplifyStatsGov = { deployments?: number; demos?: number; projects?: number; satisfaction?: number };
+
+function extractStatsFromGovNotes(govNotes: string | undefined): AimplifyStatsGov | null {
+  return extractJsonPrefixedLine<AimplifyStatsGov>(govNotes, 'AIMPLIFY_STATS_JSON:');
+}
+
 /** Only submissions that have cleared the pipeline appear in the public catalog. */
 function isPublishedCatalogSubmission(submission: PipelineSubmission): boolean {
   return submission.status === 'Published';
@@ -119,14 +168,35 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
   const launchDemoUrl = cleanUrl(submission.demoUrl) ?? legacyAttachmentUrl;
   const repoUrl = cleanUrl(submission.repoUrl);
   const videoUrl = cleanUrl(submission.videoUrl);
-  const tags = Array.from(new Set([
-    submission.category,
-    submission.solution,
-    ...clouds.map((cloud) => cloud.toUpperCase()),
-  ].filter(Boolean)));
+  const { card: descCard, long: descLong } = splitCardAndLongDescription(submission.desc);
+  const parsedTags = extractJsonPrefixedLine<string[]>(submission.govNotes, 'AIMPLIFY_TAGS_JSON:');
+  const tags = parsedTags?.length
+    ? Array.from(new Set(parsedTags.filter(Boolean)))
+    : Array.from(
+        new Set(
+          [submission.category, submission.solution, ...clouds.map((cloud) => cloud.toUpperCase())].filter(Boolean),
+        ),
+      );
 
   const fromGov = extractCatalogCodeFromGovNotes(submission.govNotes);
   const displayId = fromGov ?? `${familyPrefix(family)}-${String(index + 1).padStart(3, '0')}`;
+
+  const effortParsed = extractEffortFromGovNotes(submission.govNotes);
+  const effort: CatalogEffort = effortParsed ?? 'medium';
+
+  const demoReadyGov = extractDemoReadyFromGovNotes(submission.govNotes);
+  const demoReady =
+    demoReadyGov !== null ? demoReadyGov : Boolean(launchDemoUrl || videoUrl);
+
+  const parsedStats = extractStatsFromGovNotes(submission.govNotes);
+  const stats = parsedStats
+    ? {
+        deployments: Number(parsedStats.deployments) || 0,
+        demos: Number(parsedStats.demos) || 0,
+        projects: Number(parsedStats.projects) || 0,
+        satisfaction: Number(parsedStats.satisfaction) || submission.aiScore,
+      }
+    : { deployments: 1, demos: launchDemoUrl || videoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore };
 
   return {
     id: submission.id,
@@ -136,19 +206,19 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
     category: submission.category,
     clouds,
     maturity: normalizeMaturity(submission.maturity),
-    effort: 'medium',
-    demoReady: Boolean(launchDemoUrl || videoUrl),
+    effort,
+    demoReady,
     solution: submission.solution,
     owner: submission.submitter,
     ownerInit: submission.submitterInit,
-    desc: submission.desc,
-    longDesc: submission.desc || 'Published contribution from the AIMPLIFY review pipeline.',
+    desc: descCard,
+    longDesc: descLong || 'Published contribution from the AIMPLIFY review pipeline.',
     architecture,
     archColors: architecture.map((_, i) => ARCH_COLORS[i % 4]),
     quickStart: normalizeText(submission.commands),
     prerequisites,
     dependencies,
-    stats: { deployments: 1, demos: launchDemoUrl || videoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore },
+    stats,
     changelog: [{ ver: 'v1.0.0', date: submission.date, desc: 'Published from contribution pipeline.' }],
     tags,
     launchDemoUrl,
