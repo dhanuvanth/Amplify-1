@@ -12,11 +12,6 @@ type LoginFormInputs = {
   password: string;
 };
 
-const demoCredentials: LoginFormInputs = {
-  email: 'dhanuvanth.senthilkumar@infovision.com',
-  password: 'Aimplify@123',
-};
-
 export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [assets, setAssets] = useState<CatalogAsset[]>([]);
@@ -30,7 +25,10 @@ export const Login: React.FC = () => {
     formState: { errors, isValid },
   } = useForm<LoginFormInputs>({
     mode: 'onChange',
-    defaultValues: demoCredentials,
+    defaultValues: {
+      email: '',
+      password: '',
+    },
   });
 
   useEffect(() => {
