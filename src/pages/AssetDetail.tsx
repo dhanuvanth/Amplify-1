@@ -7,6 +7,7 @@ import { CC, CL, MC, ML, ACM } from '../data/uiConstants';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getCatalogAsset, loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
+import { resolveWatchDemoUrl } from '../lib/demoMediaUrl';
 import { DemoVideoModal } from '../components/media/DemoVideoModal';
 
 export function AssetDetail() {
@@ -69,7 +70,12 @@ export function AssetDetail() {
   const fm = families[asset.family] ?? defaultFamilyBadge();
   const launchDemoUrl = asset.launchDemoUrl || asset.demoUrl;
   const repoUrl = asset.repoUrl;
-  const videoUrl = asset.videoUrl;
+  const videoUrl =
+    asset.videoUrl ??
+    resolveWatchDemoUrl({
+      videoUrl: asset.videoUrl,
+      demoUrl: asset.demoUrl ?? asset.launchDemoUrl,
+    });
   const hasLaunchDemo = Boolean(launchDemoUrl);
   const hasRepo = Boolean(repoUrl);
   const hasVideo = Boolean(videoUrl);
