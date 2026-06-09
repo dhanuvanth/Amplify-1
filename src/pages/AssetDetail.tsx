@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getCatalogAsset, loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
 import { resolveWatchDemoUrl } from '../lib/demoMediaUrl';
+import { resolveLaunchDemo } from '../lib/launchDemo';
 import { DemoVideoModal } from '../components/media/DemoVideoModal';
 
 export function AssetDetail() {
@@ -68,7 +69,6 @@ export function AssetDetail() {
   }
 
   const fm = families[asset.family] ?? defaultFamilyBadge();
-  const launchDemoUrl = asset.launchDemoUrl || asset.demoUrl;
   const repoUrl = asset.repoUrl;
   const videoUrl =
     asset.videoUrl ??
@@ -76,15 +76,29 @@ export function AssetDetail() {
       videoUrl: asset.videoUrl,
       demoUrl: asset.demoUrl ?? asset.launchDemoUrl,
     });
-  const hasLaunchDemo = Boolean(launchDemoUrl);
+  const launchDemoTarget = resolveLaunchDemo(asset, id ?? asset.sourceSubmissionId ?? asset.id);
+  const hasLaunchDemo = launchDemoTarget.mode !== 'unavailable';
   const hasRepo = Boolean(repoUrl);
   const hasVideo = Boolean(videoUrl);
+
   const openExternalLink = (url: string | undefined, label: string) => {
     if (!url) {
       window.alert(`${label} is not available for this asset yet.`);
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleLaunchDemo = () => {
+    if (launchDemoTarget.mode === 'internal') {
+      navigate(launchDemoTarget.path);
+      return;
+    }
+    if (launchDemoTarget.mode === 'external') {
+      openExternalLink(launchDemoTarget.url, 'Demo link');
+      return;
+    }
+    window.alert('Demo is not available for this asset yet.');
   };
 
   const openDemoVideo = () => {
@@ -156,7 +170,7 @@ export function AssetDetail() {
             <div className="mt-6 flex flex-wrap gap-3">
               <Button
                 size="lg"
-                onClick={() => openExternalLink(launchDemoUrl, 'Demo link')}
+                onClick={handleLaunchDemo}
                 className="gap-2"
                 disabled={!hasLaunchDemo}
               >

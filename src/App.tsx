@@ -4,6 +4,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { Home } from './pages/Home';
 import { Catalog } from './pages/Catalog';
 import { AssetDetail } from './pages/AssetDetail';
+import { AssetDemo } from './pages/AssetDemo';
 import { FamilyDetail } from './pages/FamilyDetail';
 import { Pipeline } from './pages/Pipeline';
 import { PipelineDetail } from './pages/PipelineDetail';
@@ -20,6 +21,7 @@ function App() {
           <Route index element={<Home />} />
           <Route path="catalog" element={<Catalog />} />
           <Route path="catalog/:id" element={<AssetDetail />} />
+          <Route path="catalog/:id/demo" element={<AssetDemo />} />
           <Route path="family/:id" element={<FamilyDetail />} />
           <Route path="pipeline" element={<Pipeline />} />
           <Route path="pipeline/:id" element={<PipelineDetail />} />
