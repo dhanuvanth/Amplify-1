@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, BrainCircuit } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useFamilies } from '../context/FamiliesContext';
+import { useAuth } from '../context/AuthContext';
 import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
 import { CopyrightFooter } from '../components/layout/CopyrightFooter';
 
@@ -12,12 +13,27 @@ type LoginFormInputs = {
   password: string;
 };
 
+function MicrosoftIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 21 21" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+    </svg>
+  );
+}
+
 export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
+  const [isSsoLoading, setIsSsoLoading] = useState(false);
   const [assets, setAssets] = useState<CatalogAsset[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { families, loading: familiesLoading } = useFamilies();
+  const { session, user, loading: authLoading, authError, clearAuthError, signInWithDemo, signInWithMicrosoft } =
+    useAuth();
 
   const {
     register,
@@ -30,6 +46,12 @@ export const Login: React.FC = () => {
       password: '',
     },
   });
+
+  useEffect(() => {
+    if (!authLoading && (session || user)) {
+      navigate('/', { replace: true });
+    }
+  }, [authLoading, session, user, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,18 +72,23 @@ export const Login: React.FC = () => {
   }, []);
 
   const onSubmit = (data: LoginFormInputs) => {
-    const emailParts = data.email.split('@')[0].split('.');
-    const fullName = emailParts.map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
-    const initials = emailParts.map(part => part.charAt(0).toUpperCase()).join('').substring(0, 2) || 'U';
-
-    localStorage.setItem('user', JSON.stringify({
-      name: fullName,
-      initials: initials,
-      email: data.email
-    }));
-
+    clearAuthError();
+    signInWithDemo(data.email);
     navigate('/');
   };
+
+  const handleMicrosoftSignIn = async () => {
+    setIsSsoLoading(true);
+    clearAuthError();
+    try {
+      await signInWithMicrosoft();
+    } finally {
+      setIsSsoLoading(false);
+    }
+  };
+
+  const displayError =
+    authError ?? (location.state as { authError?: string } | null)?.authError ?? null;
 
   const familyEntries = Object.entries(families);
 
@@ -80,7 +107,6 @@ export const Login: React.FC = () => {
           <div className="pointer-events-none absolute bottom-[-20%] left-[-10%] h-[600px] w-[600px] rounded-full bg-[#0a1120] opacity-80 blur-3xl" />
           
           <div className="relative z-10 max-w-xl">
-            {/* App brand — unchanged */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -111,7 +137,6 @@ export const Login: React.FC = () => {
               Discover, deploy, and demonstrate InfoVision's AI assets — from prompt libraries and agent patterns to production-ready accelerators.
             </motion.p>
 
-            {/* Platform families — same keys as Home; counts from catalog */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -180,7 +205,35 @@ export const Login: React.FC = () => {
             </div>
             <div className="mb-10 text-center md:text-left">
               <h2 className="mb-2 text-3xl font-bold text-slate-900">Sign in</h2>
-              <p className="text-slate-500">Use your InfoVision credentials</p>
+              <p className="text-slate-500">Use Microsoft SSO or demo credentials for testing</p>
+            </div>
+
+            {displayError && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {displayError}
+              </motion.div>
+            )}
+
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              type="button"
+              onClick={() => void handleMicrosoftSignIn()}
+              disabled={isSsoLoading}
+              className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white py-3.5 font-medium text-slate-800 shadow-sm transition-all duration-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <MicrosoftIcon />
+              {isSsoLoading ? 'Redirecting…' : 'Sign in with Microsoft'}
+            </motion.button>
+
+            <div className="my-8 flex items-center gap-4">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-xs font-medium uppercase tracking-wide text-slate-400">or</span>
+              <div className="h-px flex-1 bg-slate-200" />
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -193,6 +246,7 @@ export const Login: React.FC = () => {
                     id="email"
                     type="text"
                     inputMode="email"
+                    autoComplete="username"
                     placeholder="you@infovision.com"
                     className={`w-full rounded-xl border px-4 py-3 transition-all duration-200 outline-none focus:ring-2 focus:ring-opacity-20 ${
                       errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 focus:border-blue-500 focus:ring-blue-500'
@@ -225,6 +279,7 @@ export const Login: React.FC = () => {
                   <input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
                     placeholder="Enter your password"
                     className={`w-full rounded-xl border py-3 pl-4 pr-12 transition-all duration-200 outline-none focus:ring-2 focus:ring-opacity-20 ${
                       errors.password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 focus:border-blue-500 focus:ring-blue-500'
@@ -254,22 +309,20 @@ export const Login: React.FC = () => {
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 type="submit"
-                disabled={!isValid}
+                disabled={!isValid || isSsoLoading}
                 className={`w-full rounded-xl py-3.5 font-medium text-white shadow-lg transition-all duration-300 ${
-                  isValid 
+                  isValid && !isSsoLoading
                     ? 'bg-blue-500 shadow-blue-500/25 hover:bg-blue-600 hover:shadow-blue-500/40' 
                     : 'cursor-not-allowed bg-slate-300 shadow-none'
                 }`}
               >
-                Sign in
+                Sign in (demo)
               </motion.button>
             </form>
 
-            <div className="mt-8 text-center">
-              <p className="text-sm text-slate-500">
-                SSO via Microsoft Entra ID available
-              </p>
-            </div>
+            <p className="mt-8 text-center text-sm text-slate-500">
+              Demo sign-in stores your email locally for testing. SSO uses Microsoft Entra ID via Supabase.
+            </p>
           </div>
         </motion.div>
       </div>
