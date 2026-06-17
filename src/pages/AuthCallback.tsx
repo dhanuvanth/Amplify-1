@@ -10,7 +10,7 @@ function formatOAuthError(message: string): string {
       '1. Azure redirect URI must be type Web (not SPA): https://<project>.supabase.co/auth/v1/callback',
       '2. Supabase Azure provider uses the secret Value (not Secret ID)',
       '3. For single-tenant Entra, set Azure Tenant URL in Supabase to https://login.microsoftonline.com/<tenant-id>',
-      '4. Add http://localhost:5173/auth/callback to Supabase Redirect URLs',
+      '4. Add your app callback to Supabase Redirect URLs, e.g. https://<app>.vercel.app/auth/callback',
     ].join(' ');
   }
 

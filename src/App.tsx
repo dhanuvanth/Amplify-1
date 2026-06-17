@@ -12,10 +12,12 @@ import { PipelineDetail } from './pages/PipelineDetail';
 import { Submit } from './pages/Submit';
 import { Login } from './pages/Login';
 import { AuthCallback } from './pages/AuthCallback';
+import { OAuthRedirectHandler } from './components/auth/OAuthRedirectHandler';
 
 function App() {
   return (
     <BrowserRouter>
+      <OAuthRedirectHandler />
       <AuthProvider>
         <FamiliesProvider>
           <Routes>
