@@ -6,6 +6,7 @@ import { defaultFamilyBadge, useFamilies } from '../context/FamiliesContext';
 import { useAuth } from '../context/AuthContext';
 import { loadRecentActivity, type ActivityFeedItem } from '../lib/activity';
 import { loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
+import { catalogAssetPath } from '../lib/catalogSlug';
 import { loadSubmissions, type PipelineSubmission } from '../lib/pipeline';
 
 export function Home() {
@@ -148,7 +149,7 @@ export function Home() {
               return (
                 <div
                   key={a.id}
-                  onClick={() => navigate(`/catalog/${a.id}`)}
+                  onClick={() => navigate(catalogAssetPath(a))}
                   className="group flex cursor-pointer items-center gap-3 border-b border-gray-100 py-3 transition-colors hover:bg-gray-50"
                 >
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: fm.color }} />
