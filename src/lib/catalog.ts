@@ -1,12 +1,35 @@
+import { REGISTRY_ASSETS } from '../data/registryAssets';
+import { resolveWatchDemoUrl } from './demoMediaUrl';
 import { supabase } from './supabase';
-import {
-  getSubmission,
-  loadLocalSubmissions,
-  loadSubmissions,
-  rowToSubmission,
-  type PipelineSubmission,
-  type SubmissionRow,
-} from './pipeline';
+import { lookupSubmissionRow, rowToSubmission, type PipelineSubmission, type SubmissionRow } from './pipeline';
+
+type AssetRow = {
+  id: string;
+  name: string;
+  family_id: string;
+  category: string;
+  solution: string;
+  description: string;
+  about: string;
+  owner: string;
+  owner_initials: string;
+  maturity: string;
+  effort: string;
+  clouds: string[] | null;
+  tags: string[] | null;
+  demo_url: string | null;
+  repo_url: string | null;
+  video_url: string | null;
+  users_count: number | null;
+  deployments_count: number | null;
+  pipelines_count: number | null;
+  score: number | null;
+  architecture: string[] | null;
+  quick_start: string[] | null;
+  prerequisites: string[] | null;
+  dependencies: string[] | null;
+  updated_at?: string;
+};
 
 export type CatalogFamily = 'atlas' | 'forge' | 'relay' | 'sentinel' | 'nexus';
 export type CatalogCloud = 'aws' | 'gcp' | 'azure';
@@ -96,11 +119,6 @@ function extractStatsFromGovNotes(govNotes: string | undefined): AimplifyStatsGo
   return extractJsonPrefixedLine<AimplifyStatsGov>(govNotes, 'AIMPLIFY_STATS_JSON:');
 }
 
-/** Only submissions that have cleared the pipeline appear in the public catalog. */
-function isPublishedCatalogSubmission(submission: PipelineSubmission): boolean {
-  return submission.status === 'Published';
-}
-
 function extractCatalogCodeFromGovNotes(govNotes: string | undefined): string | undefined {
   if (!govNotes?.trim()) return undefined;
   const m = govNotes.match(CATALOG_CODE_RE);
@@ -112,50 +130,192 @@ function compareSubmissionDate(a: PipelineSubmission, b: PipelineSubmission) {
 }
 
 /**
- * Public catalog: **Published** pipeline submissions only (not draft `assets` rows).
- * Home, family counts, and catalog browse all use this.
+ * Public catalog: **`submissions` is the source of truth** (video_url, demo_url, metadata,
+ * attachments, gov_notes). Falls back to legacy `assets`, then bundled registry when offline.
  */
 export async function loadCatalogAssets(): Promise<CatalogAsset[]> {
-  const submissions = await loadSubmissions();
-  const published = submissions.filter(isPublishedCatalogSubmission).sort(compareSubmissionDate);
-  return published.map((submission, index) => submissionToAsset(submission, index));
+  const fromSubmissions = await loadCatalogFromSubmissions();
+  if (fromSubmissions.length) return fromSubmissions;
+
+  const fromAssets = await loadAssetsFromDbFallback();
+  if (fromAssets.length) return fromAssets;
+
+  return REGISTRY_ASSETS.map(registryToCatalogAsset);
 }
 
-/**
- * Resolve a catalog asset by **submission UUID** or legacy **catalog code** (e.g. ATL-001) when
- * `gov_notes` contains `Catalog id ATL-001` (seed / import convention).
- */
+/** Resolve a catalog asset by catalog id (e.g. ATL-001) or submission UUID. */
 export async function getCatalogAsset(id: string): Promise<CatalogAsset | null> {
   const trimmed = id?.trim();
   if (!trimmed) return null;
 
-  const byId = await getSubmission(trimmed);
-  if (byId?.status === 'Published') {
-    return submissionToAsset(byId, 0);
+  const fromSubmission = await getCatalogSubmissionByLookup(trimmed);
+  if (fromSubmission) return submissionToAsset(fromSubmission, 0);
+
+  const fromAsset = await getAssetFromDbFallback(trimmed);
+  if (fromAsset) return fromAsset;
+
+  const registry = REGISTRY_ASSETS.find((asset) => asset.id.toUpperCase() === trimmed.toUpperCase());
+  return registry ? registryToCatalogAsset(registry) : null;
+}
+
+/** Load catalog rows from `submissions` — canonical DB table for all accelerator metadata. */
+async function loadCatalogFromSubmissions(): Promise<CatalogAsset[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('submissions')
+    .select('*')
+    .order('submitted_at', { ascending: false });
+
+  if (error) {
+    console.warn('Unable to load catalog from submissions:', error.message);
+    return [];
   }
+  if (!data?.length) return [];
 
-  if (/^[A-Z]{2,4}-\d{3}$/i.test(trimmed)) {
-    const code = trimmed.toUpperCase();
-    if (supabase) {
-      const { data: byNote, error: noteErr } = await supabase
-        .from('submissions')
-        .select('*')
-        .eq('status', 'Published')
-        .ilike('gov_notes', `%Catalog id ${code}%`)
-        .limit(1)
-        .maybeSingle();
+  const catalogSubmissions = dedupeCatalogSubmissions(
+    (data as SubmissionRow[]).map((row) => rowToSubmission(row)).filter(isCatalogSubmission),
+  );
 
-      if (!noteErr && byNote) {
-        return submissionToAsset(rowToSubmission(byNote as SubmissionRow), 0);
-      }
-    } else {
-      const local = loadLocalSubmissions().filter(isPublishedCatalogSubmission);
-      const byNote = local.find((submission) => submission.govNotes?.includes(`Catalog id ${code}`));
-      if (byNote) return submissionToAsset(byNote, 0);
+  return catalogSubmissions
+    .sort(compareSubmissionDate)
+    .map((submission, index) => submissionToAsset(submission, index));
+}
+
+async function getCatalogSubmissionByLookup(id: string): Promise<PipelineSubmission | null> {
+  const row = await lookupSubmissionRow(id);
+  return row ? rowToSubmission(row) : null;
+}
+
+function isCatalogSubmission(submission: PipelineSubmission): boolean {
+  if (extractCatalogCodeFromGovNotes(submission.govNotes)) return true;
+  return submission.status === 'Published';
+}
+
+function dedupeCatalogSubmissions(submissions: PipelineSubmission[]): PipelineSubmission[] {
+  const byKey = new Map<string, PipelineSubmission>();
+
+  for (const submission of submissions) {
+    const catalogId = extractCatalogCodeFromGovNotes(submission.govNotes)?.toUpperCase();
+    const key = catalogId ?? submission.id;
+    const existing = byKey.get(key);
+    if (!existing || compareSubmissionDate(submission, existing) < 0) {
+      byKey.set(key, submission);
     }
   }
 
-  return null;
+  return Array.from(byKey.values());
+}
+
+/** Legacy fallback when `submissions` is empty or unreadable. */
+async function loadAssetsFromDbFallback(): Promise<CatalogAsset[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase.from('assets').select('*').order('updated_at', { ascending: false });
+  if (error) {
+    console.warn('Unable to load assets fallback from Supabase:', error.message);
+    return [];
+  }
+
+  return (data as AssetRow[]).map((row) => assetRowToCatalogAsset(row));
+}
+
+async function getAssetFromDbFallback(id: string): Promise<CatalogAsset | null> {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.from('assets').select('*').ilike('id', id).maybeSingle();
+  if (error || !data) return null;
+
+  return assetRowToCatalogAsset(data as AssetRow);
+}
+
+function assetRowToCatalogAsset(row: AssetRow): CatalogAsset {
+  const family = normalizeFamily(row.family_id);
+  const architecture = jsonbToList(row.architecture, ['Not applicable']);
+  const prerequisites = jsonbToList(row.prerequisites, ['See asset documentation']).map((name) => ({
+    name,
+    done: true,
+  }));
+  const dependencies = jsonbToList(row.dependencies, ['Not applicable']);
+  const clouds = normalizeClouds(row.clouds ?? []);
+  const effort = normalizeEffort(row.effort);
+  const demoUrl = cleanUrl(row.demo_url);
+  const videoUrl = resolveWatchDemoUrl({
+    videoUrl: row.video_url,
+    demoUrl: row.demo_url,
+  });
+  const quickStart = Array.isArray(row.quick_start)
+    ? row.quick_start.filter(Boolean).join('\n')
+    : normalizeText(row.quick_start ?? '');
+
+  return {
+    id: row.id,
+    displayId: row.id,
+    name: row.name,
+    family,
+    category: row.category,
+    clouds,
+    maturity: normalizeMaturity(row.maturity),
+    effort,
+    demoReady: Boolean(demoUrl || videoUrl),
+    solution: row.solution,
+    owner: row.owner,
+    ownerInit: row.owner_initials,
+    desc: row.description?.trim() || row.name,
+    longDesc: row.about?.trim() || row.description?.trim() || row.name,
+    architecture,
+    archColors: architecture.map((_, index) => ARCH_COLORS[index % 4]),
+    quickStart,
+    prerequisites,
+    dependencies,
+    stats: {
+      deployments: row.deployments_count ?? 0,
+      demos: row.pipelines_count ?? 0,
+      projects: row.users_count ?? 0,
+      satisfaction: row.score ?? 0,
+    },
+    changelog: [
+      {
+        ver: 'registry',
+        date: row.updated_at?.slice(0, 10) ?? '2026-05-08',
+        desc: 'AIMPLIFY catalog registry.',
+      },
+    ],
+    tags: row.tags?.length ? row.tags : [row.category, row.solution].filter(Boolean),
+    launchDemoUrl: demoUrl,
+    demoUrl,
+    repoUrl: cleanUrl(row.repo_url),
+    videoUrl,
+  };
+}
+
+function registryToCatalogAsset(asset: (typeof REGISTRY_ASSETS)[number]): CatalogAsset {
+  const demoUrl = 'demoUrl' in asset ? asset.demoUrl : undefined;
+  return {
+    ...asset,
+    displayId: asset.id,
+    launchDemoUrl: demoUrl,
+    demoUrl,
+    repoUrl: undefined,
+    videoUrl: undefined,
+    sourceSubmissionId: undefined,
+  };
+}
+
+function jsonbToList(value: string[] | null | undefined, fallback: string[]) {
+  if (!Array.isArray(value) || !value.length) return fallback;
+  const items = value.map((item) => String(item).trim()).filter(Boolean);
+  if (!items.length) return fallback;
+  if (items.length === 1 && ['not applicable', 'none', 'tbd', 'wip'].includes(items[0].toLowerCase())) {
+    return fallback;
+  }
+  return items;
+}
+
+function normalizeEffort(value: string | undefined): CatalogEffort {
+  const effort = value?.trim().toLowerCase();
+  if (effort === 'low' || effort === 'medium' || effort === 'high') return effort;
+  return 'medium';
 }
 
 function submissionToAsset(submission: PipelineSubmission, index: number): CatalogAsset {
@@ -167,7 +327,12 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
   const legacyAttachmentUrl = firstAttachmentUrl(submission.attachments);
   const launchDemoUrl = cleanUrl(submission.demoUrl) ?? legacyAttachmentUrl;
   const repoUrl = cleanUrl(submission.repoUrl);
-  const videoUrl = cleanUrl(submission.videoUrl);
+  const videoUrl = resolveWatchDemoUrl({
+    videoUrl: submission.videoUrl,
+    demoUrl: submission.demoUrl,
+    govNotes: submission.govNotes,
+    attachments: submission.attachments,
+  });
   const { card: descCard, long: descLong } = splitCardAndLongDescription(submission.desc);
   const parsedTags = extractJsonPrefixedLine<string[]>(submission.govNotes, 'AIMPLIFY_TAGS_JSON:');
   const tags = parsedTags?.length
@@ -178,8 +343,8 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
         ),
       );
 
-  const fromGov = extractCatalogCodeFromGovNotes(submission.govNotes);
-  const displayId = fromGov ?? `${familyPrefix(family)}-${String(index + 1).padStart(3, '0')}`;
+  const catalogId = extractCatalogCodeFromGovNotes(submission.govNotes);
+  const displayId = catalogId ?? `${familyPrefix(family)}-${String(index + 1).padStart(3, '0')}`;
 
   const effortParsed = extractEffortFromGovNotes(submission.govNotes);
   const effort: CatalogEffort = effortParsed ?? 'medium';
@@ -199,7 +364,7 @@ function submissionToAsset(submission: PipelineSubmission, index: number): Catal
     : { deployments: 1, demos: launchDemoUrl || videoUrl ? 1 : 0, projects: 0, satisfaction: submission.aiScore };
 
   return {
-    id: submission.id,
+    id: catalogId ?? submission.id,
     displayId,
     name: submission.name,
     family,

@@ -96,20 +96,65 @@ export async function loadSubmissions(): Promise<PipelineSubmission[]> {
     .select('*')
     .order('submitted_at', { ascending: false });
 
-  if (error) return loadLocalSubmissions();
-  if (!data?.length) return [];
-  return (data as SubmissionRow[]).map(rowToSubmission);
+  if (error) {
+    console.warn('Unable to load submissions from Supabase:', error.message);
+    return loadLocalSubmissions();
+  }
+
+  return mergeSubmissions((data ?? []).map((row) => rowToSubmission(row as SubmissionRow)), loadLocalSubmissions());
+}
+
+const CATALOG_CODE_RE = /^[A-Z]{2,4}-\d{3}$/i;
+const SUBMISSION_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isCatalogCode(id: string): boolean {
+  return CATALOG_CODE_RE.test(id.trim());
+}
+
+function isSubmissionUuid(id: string): boolean {
+  return SUBMISSION_UUID_RE.test(id.trim());
+}
+
+/** Resolve a submission row by catalog code (ATL-001) or UUID — never query UUID column with catalog codes. */
+export async function lookupSubmissionRow(id: string): Promise<SubmissionRow | null> {
+  const trimmed = id?.trim();
+  if (!trimmed || !supabase) return null;
+
+  if (isCatalogCode(trimmed)) {
+    const { data, error } = await supabase
+      .from('submissions')
+      .select('*')
+      .ilike('gov_notes', `%Catalog id ${trimmed.toUpperCase()}%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data) return data as SubmissionRow;
+    return null;
+  }
+
+  if (isSubmissionUuid(trimmed)) {
+    const { data, error } = await supabase.from('submissions').select('*').eq('id', trimmed).maybeSingle();
+    if (!error && data) return data as SubmissionRow;
+  }
+
+  return null;
 }
 
 export async function getSubmission(id: string): Promise<PipelineSubmission | null> {
+  const trimmed = id?.trim();
+  if (!trimmed) return null;
+
   const local = loadLocalSubmissions();
-  const localMatch = local.find((item) => item.id === id) ?? null;
+  const localMatch =
+    local.find((item) => item.id === trimmed) ??
+    local.find((item) => item.govNotes?.includes(`Catalog id ${trimmed.toUpperCase()}`)) ??
+    null;
 
-  if (!supabase) return localMatch;
+  const row = await lookupSubmissionRow(trimmed);
+  if (row) return rowToSubmission(row);
 
-  const { data, error } = await supabase.from('submissions').select('*').eq('id', id).maybeSingle();
-  if (error || !data) return localMatch;
-  return rowToSubmission(data as SubmissionRow);
+  return localMatch;
 }
 
 export async function createSubmission(input: Omit<PipelineSubmission, 'id' | 'date' | 'aiScore' | 'aiFindings' | 'govReviewer' | 'govNotes'>) {
@@ -572,4 +617,10 @@ function clearLocalRevisionNote(id: string) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function mergeSubmissions(remote: PipelineSubmission[], local: PipelineSubmission[]) {
+  const remoteIds = new Set(remote.map((item) => item.id));
+  const localOnly = local.filter((item) => !remoteIds.has(item.id));
+  return [...remote, ...localOnly];
 }

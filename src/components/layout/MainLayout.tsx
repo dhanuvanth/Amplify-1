@@ -186,7 +186,13 @@ export function MainLayout() {
       </nav>
 
       {/* Main Content */}
-      <main className="mx-auto w-full max-w-7xl flex-1">
+      <main
+        className={
+          location.pathname.endsWith('/demo')
+            ? 'w-full flex-1'
+            : 'mx-auto w-full max-w-7xl flex-1'
+        }
+      >
         <Outlet />
       </main>
 
