@@ -2,31 +2,24 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Home, LayoutGrid, ListChecks, PlusCircle, Search, X, LogOut, ChevronDown, Settings } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '../../utils/cn';
+import { useAuth } from '../../context/AuthContext';
 import { loadSubmissions } from '../../lib/pipeline';
 import { CopyrightFooter } from './CopyrightFooter';
 
 export function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, loading, signOut } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [user] = useState(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) return { name: '', initials: '', email: '' };
-    try {
-      return JSON.parse(storedUser) as { name: string; initials: string; email: string };
-    } catch {
-      return { name: '', initials: '', email: '' };
-    }
-  });
   const [pendingCount, setPendingCount] = useState(0);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!user.email) {
-      navigate('/login');
+    if (!loading && !user?.email) {
+      navigate('/login', { replace: true });
     }
-  }, [navigate, user.email]);
+  }, [loading, navigate, user?.email]);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,13 +47,25 @@ export function MainLayout() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  
+
   const navItems = [
     { id: '/', label: 'Home', icon: Home },
     { id: '/catalog', label: 'Catalog', icon: LayoutGrid },
     { id: '/pipeline', label: 'Pipeline', icon: ListChecks },
     { id: '/submit', label: 'Submit', icon: PlusCircle },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAFBFC]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-[#FAFBFC] font-sans text-slate-900">
@@ -167,8 +172,7 @@ export function MainLayout() {
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
-                    localStorage.removeItem('user');
-                    navigate('/login');
+                    void signOut().then(() => navigate('/login'));
                   }}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                 >
@@ -182,7 +186,13 @@ export function MainLayout() {
       </nav>
 
       {/* Main Content */}
-      <main className="mx-auto w-full max-w-7xl flex-1">
+      <main
+        className={
+          location.pathname.endsWith('/demo')
+            ? 'w-full flex-1'
+            : 'mx-auto w-full max-w-7xl flex-1'
+        }
+      >
         <Outlet />
       </main>
 

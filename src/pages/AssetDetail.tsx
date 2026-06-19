@@ -7,10 +7,13 @@ import { CC, CL, MC, ML, ACM } from '../data/uiConstants';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getCatalogAsset, loadCatalogAssets, type CatalogAsset } from '../lib/catalog';
+import { catalogAssetPath } from '../lib/catalogSlug';
+import { resolveWatchDemoUrl } from '../lib/demoMediaUrl';
+import { resolveLaunchDemo } from '../lib/launchDemo';
 import { DemoVideoModal } from '../components/media/DemoVideoModal';
 
 export function AssetDetail() {
-  const { id } = useParams();
+  const { slug: routeSlug } = useParams();
   const navigate = useNavigate();
   const { families } = useFamilies();
   const [tab, setTab] = useState<'overview' | 'architecture' | 'quick-start'>('overview');
@@ -20,9 +23,9 @@ export function AssetDetail() {
   const [demoVideoOpen, setDemoVideoOpen] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (!routeSlug) return;
 
-    const assetId = id;
+    const assetId = routeSlug;
     let cancelled = false;
 
     async function hydrate() {
@@ -39,6 +42,10 @@ export function AssetDetail() {
             : [],
         );
         setIsLoading(false);
+
+        if (currentAsset && assetId.toLowerCase() !== currentAsset.slug) {
+          navigate(catalogAssetPath(currentAsset), { replace: true });
+        }
       }
     }
 
@@ -47,7 +54,7 @@ export function AssetDetail() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [routeSlug, navigate]);
   
   if (isLoading) {
     return (
@@ -67,18 +74,36 @@ export function AssetDetail() {
   }
 
   const fm = families[asset.family] ?? defaultFamilyBadge();
-  const launchDemoUrl = asset.launchDemoUrl || asset.demoUrl;
   const repoUrl = asset.repoUrl;
-  const videoUrl = asset.videoUrl;
-  const hasLaunchDemo = Boolean(launchDemoUrl);
+  const videoUrl =
+    asset.videoUrl ??
+    resolveWatchDemoUrl({
+      videoUrl: asset.videoUrl,
+      demoUrl: asset.demoUrl ?? asset.launchDemoUrl,
+    });
+  const launchDemoTarget = resolveLaunchDemo(asset);
+  const hasLaunchDemo = launchDemoTarget.mode !== 'unavailable';
   const hasRepo = Boolean(repoUrl);
   const hasVideo = Boolean(videoUrl);
+
   const openExternalLink = (url: string | undefined, label: string) => {
     if (!url) {
       window.alert(`${label} is not available for this asset yet.`);
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleLaunchDemo = () => {
+    if (launchDemoTarget.mode === 'internal') {
+      navigate(launchDemoTarget.path);
+      return;
+    }
+    if (launchDemoTarget.mode === 'external') {
+      openExternalLink(launchDemoTarget.url, 'Demo link');
+      return;
+    }
+    window.alert('Demo is not available for this asset yet.');
   };
 
   const openDemoVideo = () => {
@@ -150,7 +175,7 @@ export function AssetDetail() {
             <div className="mt-6 flex flex-wrap gap-3">
               <Button
                 size="lg"
-                onClick={() => openExternalLink(launchDemoUrl, 'Demo link')}
+                onClick={handleLaunchDemo}
                 className="gap-2"
                 disabled={!hasLaunchDemo}
               >
@@ -390,7 +415,7 @@ export function AssetDetail() {
                 {relatedAssets.map(r => (
                   <div 
                     key={r.id} 
-                    onClick={() => navigate(`/catalog/${r.id}`)}
+                    onClick={() => navigate(catalogAssetPath(r))}
                     className="group flex cursor-pointer items-center gap-3 rounded-lg p-2 transition-colors hover:bg-gray-50 -mx-2"
                   >
                     <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: fm.color }} />
